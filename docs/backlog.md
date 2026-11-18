@@ -172,11 +172,12 @@ Three pull requests:
 | PR | Items | What to try after merge and sync |
 | :--- | :--- | :--- |
 | A | S04-01 … S04-03 | Keycloak runs with the realm; a user signs in through the identity service and gets a token |
-| B | S04-04 … S04-05 | The logistics app answers 401 without a token and accepts one from the identity service |
-| C | S04-06 … S04-07 | One ApplicationSet creates every service's Application; the guides build in CI |
+| fix | S04-04 | The admin console opens on `localhost:8180` |
+| B | S04-05 … S04-06 | The logistics app answers 401 without a token and accepts one from the identity service |
+| C | S04-07 … S04-08 | One ApplicationSet creates every service's Application; the guides build in CI |
 
 - [x] **S04-01 Run Keycloak 26 with the logistics realm**
-  Application `keycloak`: the realm and the user profile from `deploy/platform/keycloak`, imported at start. Inside the cluster only `keycloak:8080` is the issuer; the admin console is on `localhost:8180`. Dev mode keeps its data in the container, so users created through the API are gone after a restart; the realm's own users come back.
+  Application `keycloak`: the realm and the user profile from `deploy/platform/keycloak`, imported at start. The admin console is on `localhost:8180`. Dev mode keeps its data in the container, so users created through the API are gone after a restart; the realm's own users come back.
   Port: `deploy/overlays/local/platform/keycloak*`, `infra/local/keycloak`.
   Absorbs: `f05ee5a` (only the realm file in the import folder).
 - [x] **S04-02 Add the identity service**
@@ -186,16 +187,19 @@ Three pull requests:
 - [x] **S04-03 Deploy the identity service**
   Image, values for the shared chart (NodePort 8085), an Application, and CI building and publishing it.
   Done when: `curl -X POST localhost:8085/sessions` with a realm user returns an access token whose `tenant_id` is the user's tenant.
-- [ ] **S04-04 Add the security library**
+- [x] **S04-04 Give Keycloak one address for browsers and tokens**
+  With `--hostname=http://keycloak:8080` the admin console loaded, but its sign-in sent the browser to `keycloak:8080`, a name that exists only inside the cluster ("Timeout when waiting for 3rd party check iframe message"). Keycloak's public address is now `http://localhost:8180` for pages, redirects and the token issuer; `--hostname-backchannel-dynamic` keeps the identity service's calls on `keycloak:8080`.
+  Done when: `http://localhost:8180/admin` signs in, and a token from `POST /sessions` has `iss: http://localhost:8180/realms/ff-logistics`.
+- [ ] **S04-05 Add the security library**
   JWT resource server against the identity service's JWKS, tenant claim into `TenantContext`, `local` header fallback.
   Port: `base/ff-base-security`.
   Absorbs: `6e9ced3` (refuse an invalid tenant claim).
-- [ ] **S04-05 Protect the logistics app with tokens**
+- [ ] **S04-06 Protect the logistics app with tokens**
   The app uses the security, web and tenant libraries; everything but Actuator needs a token.
-- [ ] **S04-06 Generate service Applications with an ApplicationSet**
+- [ ] **S04-07 Generate service Applications with an ApplicationSet**
   Git directory generator over `deploy/apps/*`; the hand-written `logistics-app` and `identity` Applications go away.
   Done when: adding a folder under `deploy/apps/` creates an Application without touching Argo CD config.
-- [ ] **S04-07 Build the documentation site in CI**
+- [ ] **S04-08 Build the documentation site in CI**
   AsciiDoc under `docs/src`, one guide per deployable, built and checked for warnings on every push.
   Port: `docs/build-docs.*`, `docs/src/index.adoc`, `_attributes.adoc`.
   Absorbs: `a87c1ec` (fail on warnings).

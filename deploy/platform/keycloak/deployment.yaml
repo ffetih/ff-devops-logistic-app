@@ -25,10 +25,12 @@ spec:
             # every start; users created later through the API do not survive a restart.
             - start-dev
             - --import-realm
-            # Tokens name http://keycloak:8080 as their issuer, the address the services use
-            # inside the cluster. The admin console is opened from the host on localhost:8180.
-            - --hostname=http://keycloak:8080
-            - --hostname-admin=http://localhost:8180
+            # One public address, the one a browser on this machine can open: every page, every
+            # redirect and the issuer of every token is http://localhost:8180. The services
+            # inside the cluster still call http://keycloak:8080; backchannel-dynamic answers
+            # those calls (token, JWKS) on the address they came in on.
+            - --hostname=http://localhost:8180
+            - --hostname-backchannel-dynamic=true
             - --http-enabled=true
             - --health-enabled=true
           ports:

@@ -4,12 +4,13 @@ service:
   nodePort: 30085 # host port 8085
 
 # Every variable in one list: Helm replaces lists, it does not merge them.
-# Keycloak is the keycloak Application in the same namespace (deploy/platform/keycloak).
+# Keycloak is the keycloak Application in the same namespace (deploy/platform/keycloak). The
+# service calls it on its in-cluster address; the tokens name its public address as issuer.
 env:
   - name: IDENTITY_KEYCLOAK_BASE_URL
     value: http://keycloak:8080
   - name: IDENTITY_KEYCLOAK_ISSUER
-    value: http://keycloak:8080/realms/ff-logistics
+    value: http://localhost:8180/realms/ff-logistics
   - name: IDENTITY_KEYCLOAK_ADMIN_USERNAME
     valueFrom:
       secretKeyRef:

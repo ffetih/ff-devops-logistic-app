@@ -318,10 +318,13 @@ curl -s localhost:8180/realms/ff-logistics | head -c 200; echo
 
 | What | Where |
 | :--- | :--- |
-| Issuer in every token | `http://keycloak:8080/realms/ff-logistics` (the in-cluster address) |
+| Issuer in every token | `http://localhost:8180/realms/ff-logistics` (Keycloak's public address) |
+| Inside the cluster | `http://keycloak:8080`: the identity service calls it there |
 | Admin console | `http://localhost:8180/admin`, user `admin`, password `admin` (local only) |
 | Realm users | `nexus.planner` (tenant `ff-eu-freight`), `geodispatch.operator` (tenant `ff-tr-distribution`), password `fflogistics2026` |
 | Integration clients | `integration-ff-eu-freight.northfield`, `integration-ff-tr-distribution.corvane` (client credentials) |
+
+Keycloak has one public address, `http://localhost:8180`: the browser opens it, every redirect points at it, and every token names it as issuer. A browser on this machine cannot resolve `keycloak`, so that name must never reach a page. The identity service still calls `http://keycloak:8080` inside the cluster; `--hostname-backchannel-dynamic` lets Keycloak answer those calls on the address they came in on, while the issuer stays the public one. On a real cluster the public address would be the ingress host, for example `https://login.example.com`.
 
 Only the identity service calls Keycloak; the other services never see it. The realm lives in Git (`ff-logistics-realm.json`): a change there renames the generated ConfigMap, Keycloak restarts on the next sync and imports it. Dev mode keeps everything else inside the container, so users or clients created through the API are gone after a restart.
 

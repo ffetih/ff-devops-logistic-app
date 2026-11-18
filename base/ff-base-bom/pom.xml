@@ -56,6 +56,11 @@
                 <artifactId>siose-ff-base-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.siose.ff</groupId>
+                <artifactId>siose-ff-base-persistence</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Spring Modulith: module verification, event publication registry -->
             <dependency>

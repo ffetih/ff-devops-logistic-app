@@ -149,7 +149,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 - [x] **S03-03 Add RFC 9457 problem responses**
   Port: `base/ff-base-web`.
   Absorbs: `42db7f4` (one 503 handler for missing dependencies).
-- [ ] **S03-04 Add tenant-aware persistence**
+- [x] **S03-04 Add tenant-aware persistence**
   Hibernate `@TenantId`, database sequences, auto-configuration. Not used by the app until its first entity (S5).
   Port: `base/ff-base-persistence`.
 - [ ] **S03-05 Run PostgreSQL 17 in the cluster**

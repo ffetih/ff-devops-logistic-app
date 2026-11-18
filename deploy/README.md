@@ -353,3 +353,24 @@ curl -s localhost:8085/jwks | head -c 200; echo
 | `GET /jwks` | anyone: the keys the services verify tokens with |
 | `POST /service-tokens` | a service holding the broker key |
 | `/api/v1/users`, `/api/v1/integration-clients` | `TENANT_ADMIN`, inside their own tenant only |
+
+### Calling the logistics app with a token
+
+The logistics app checks every request outside Actuator against the identity service's keys (`IDENTITY_JWKS_URI`) and expects Keycloak's public address as issuer (`IDENTITY_TOKEN_ISSUER`). The tenant always comes from the token.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8081/api/v1/me          # 401: no token
+
+TOKEN=$(curl -s -X POST localhost:8085/sessions -H 'Content-Type: application/json' \
+  -d '{"username":"nexus.planner","password":"fflogistics2026"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
+curl -s localhost:8081/api/v1/me -H "Authorization: Bearer $TOKEN"; echo   # tenant, user, roles from the token
+```
+
+`geodispatch.operator` gets `ff-tr-distribution` instead: same app, same endpoint, another tenant. Probes, the canary analysis (`/actuator/health/release`) and `/actuator/info` stay open.
+
+From IntelliJ with the `local` profile, `X-Tenant-Id` stands in for a token:
+
+```text
+Run configuration → Active profiles: local    Program arguments: --server.port=18081
+curl -H 'X-Tenant-Id: ff-eu-freight' -H 'X-User-Roles: LOGISTICS_PLANNER' localhost:18081/api/v1/me
+```

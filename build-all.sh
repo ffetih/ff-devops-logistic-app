@@ -20,7 +20,7 @@ echo "[1/4] Base BOM and parent"
 "${MVN[@]}" -q -f base/ff-base-parent/pom.xml install
 
 echo "[2/4] Base libraries"
-for lib in tenant web persistence; do
+for lib in tenant security web persistence; do
   echo "    - ff-base-$lib"
   "${MVN[@]}" -f "base/ff-base-$lib/pom.xml" install "$@"
 done

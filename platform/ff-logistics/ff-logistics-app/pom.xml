@@ -22,9 +22,30 @@
     <name>Siose FF - Logistics App</name>
 
     <dependencies>
+        <!-- Base libraries: pick only what the product needs (versions from siose-ff-base-bom) -->
+        <dependency>
+            <groupId>com.siose.ff</groupId>
+            <artifactId>siose-ff-base-tenant</artifactId>
+        </dependency>
+        <!-- Only auto-configuration is used, so runtime scope: no compile-time coupling -->
+        <dependency>
+            <groupId>com.siose.ff</groupId>
+            <artifactId>siose-ff-base-security</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.siose.ff</groupId>
+            <artifactId>siose-ff-base-web</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <!-- JWT resource server: Boot's JwtDecoder from the identity service's JWKS -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -57,6 +78,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Most tests run on an in-memory database -->

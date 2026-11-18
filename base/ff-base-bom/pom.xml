@@ -53,6 +53,11 @@
             </dependency>
             <dependency>
                 <groupId>com.siose.ff</groupId>
+                <artifactId>siose-ff-base-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.siose.ff</groupId>
                 <artifactId>siose-ff-base-web</artifactId>
                 <version>${project.version}</version>
             </dependency>

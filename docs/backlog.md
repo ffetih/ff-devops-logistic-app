@@ -190,12 +190,13 @@ Three pull requests:
 - [x] **S04-04 Give Keycloak one address for browsers and tokens**
   With `--hostname=http://keycloak:8080` the admin console loaded, but its sign-in sent the browser to `keycloak:8080`, a name that exists only inside the cluster ("Timeout when waiting for 3rd party check iframe message"). Keycloak's public address is now `http://localhost:8180` for pages, redirects and the token issuer; `--hostname-backchannel-dynamic` keeps the identity service's calls on `keycloak:8080`.
   Done when: `http://localhost:8180/admin` signs in, and a token from `POST /sessions` has `iss: http://localhost:8180/realms/ff-logistics`.
-- [ ] **S04-05 Add the security library**
+- [x] **S04-05 Add the security library**
   JWT resource server against the identity service's JWKS, tenant claim into `TenantContext`, `local` header fallback.
   Port: `base/ff-base-security`.
   Absorbs: `6e9ced3` (refuse an invalid tenant claim).
-- [ ] **S04-06 Protect the logistics app with tokens**
-  The app uses the security, web and tenant libraries; everything but Actuator needs a token.
+- [x] **S04-06 Protect the logistics app with tokens**
+  The app uses the security, web and tenant libraries; everything but Actuator needs a token. `GET /api/v1/me` answers with the tenant, user and roles taken from the token. The `local` profile accepts `X-Tenant-Id` instead, for runs from the IDE only.
+  Done when: `/api/v1/me` answers 401 without a token, and 200 with `tenantId: ff-eu-freight` with one from `POST /sessions`.
 - [ ] **S04-07 Generate service Applications with an ApplicationSet**
   Git directory generator over `deploy/apps/*`; the hand-written `logistics-app` and `identity` Applications go away.
   Done when: adding a folder under `deploy/apps/` creates an Application without touching Argo CD config.

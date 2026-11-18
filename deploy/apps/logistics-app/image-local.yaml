@@ -3,4 +3,4 @@
 # person edits in values-local.yaml. For an image loaded with `k3d image import`, set the
 # tag to "local" here by hand.
 image:
-  tag: ff6a64ba539c8bd95e3d100d6ccecc40bcbb5066
+  tag: 6d7df6a1095e1dcd37c617798173ba8e9bb40441

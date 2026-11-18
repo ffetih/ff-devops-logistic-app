@@ -61,7 +61,7 @@ Goal: an empty repository that builds, a k3d cluster, Argo CD running in it.
   Done when: `./mvnw -v` prints Maven 3.10.0.
 - [x] **S00-02 Add README and sprint backlog**
   Done when: this file exists.
-- [ ] **S00-03 Add base BOM, parent POM and build script**
+- [x] **S00-03 Add base BOM, parent POM and build script**
   Port: `base/ff-base-bom`, `base/ff-base-parent`, `build-all.*`. The BOM starts with Spring Boot and Spring Modulith only; internal libraries and third-party versions are added in the sprint that first uses them.
   Done when: `./build-all.sh` installs both POMs into `~/.m2`.
 - [ ] **S00-04 Add k3d cluster config**

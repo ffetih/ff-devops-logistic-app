@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Siose FF - Base BOM (Bill of Materials)
+
+    The single source of truth for dependency VERSIONS. It contains no build configuration.
+    - Spring Modulith and Spring Boot BOMs; Spring Boot manages Spring, Hibernate, Jackson, JUnit, Testcontainers, ...
+
+    Any Maven project can consume it, with or without siose-ff-base-parent:
+
+        <dependencyManagement>
+          <dependencies>
+            <dependency>
+              <groupId>com.siose.ff</groupId>
+              <artifactId>siose-ff-base-bom</artifactId>
+              <version>...</version>
+              <type>pom</type>
+              <scope>import</scope>
+            </dependency>
+          </dependencies>
+        </dependencyManagement>
+
+    Rule: entries declared here BEFORE the Spring Boot import win over Spring Boot's versions.
+    Overriding a Spring-managed library therefore means declaring it explicitly above the import;
+    version properties such as <jackson.version> have no effect through an import.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.siose.ff</groupId>
+    <artifactId>siose-ff-base-bom</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Siose FF - Base BOM</name>
+    <description>Dependency versions for all Siose FF projects</description>
+
+    <properties>
+        <spring-boot.version>4.1.2</spring-boot.version>
+        <!-- Spring Modulith 2.1.x is the line for Spring Boot 4.1 -->
+        <spring-modulith.version>2.1.1</spring-modulith.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Modulith: module verification, event publication registry -->
+            <dependency>
+                <groupId>org.springframework.modulith</groupId>
+                <artifactId>spring-modulith-bom</artifactId>
+                <version>${spring-modulith.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring Boot: Spring, Hibernate, Jackson, Micrometer, Flyway, JUnit, Testcontainers, ... -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

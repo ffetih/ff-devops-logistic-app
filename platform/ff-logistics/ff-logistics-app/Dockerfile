@@ -1,7 +1,7 @@
 # Built from the jar Maven leaves in target/ (./build-all.sh first), not from source:
 # the same jar the tests ran against is the one that ships.
 #
-#   docker build -t ghcr.io/ffetih/ff-logistics-app:local platform/ff-logistics/ff-logistics-app
+#   docker build -t ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:local platform/ff-logistics/ff-logistics-app
 
 # Split the jar into layers that change at different speeds: libraries rarely,
 # the application classes on every commit. Only the last layer is rebuilt and pushed.

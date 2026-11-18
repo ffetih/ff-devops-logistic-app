@@ -39,9 +39,9 @@ Before CI publishes images, load a locally built one straight into the node:
 
 ```bash
 ./build-all.sh
-docker build -t ghcr.io/ffetih/ff-logistics-app:local platform/ff-logistics/ff-logistics-app
-docker run --rm -p 18081:8081 ghcr.io/ffetih/ff-logistics-app:local   # then curl localhost:18081/actuator/health
-k3d image import ghcr.io/ffetih/ff-logistics-app:local -c ff-logistics
+docker build -t ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:local platform/ff-logistics/ff-logistics-app
+docker run --rm -p 18081:8081 ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:local   # then curl localhost:18081/actuator/health
+k3d image import ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:local -c ff-logistics
 ```
 
 Host port 8081 belongs to the cluster, so a plain `docker run` uses another one. An imported image is used when the values set `image.tag: local` (the pull policy for that tag is `IfNotPresent`).
@@ -137,14 +137,14 @@ curl -s localhost:8081/actuator/health
 ```text
 java       ./build-all.sh with tests, keeps the jar
 manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
-images     main only, after both pass: build, push ghcr.io/ffetih/<name>:<commit sha>,
+images     main only, after both pass: build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
            write the sha into deploy/apps/<name>/values-local.yaml, commit with [skip ci]
 ```
 
 From commit to cluster:
 
 ```text
-merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-logistics-app:<sha>
+merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:<sha>
                        └──► commit "Publish image tags" (values-local.yaml)
                                       │
                 Argo CD polls Git (about every 3 minutes)
@@ -155,4 +155,4 @@ merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-logistics-app:<s
 Before the first image push works, check two settings once:
 
 - **Settings → Actions → General → Workflow permissions**: the `images` job asks for `contents: write` and `packages: write` itself, but a repository set to read-only with no override still blocks the tag commit. If the push is refused, choose *Read and write permissions*.
-- **The GHCR package's visibility**: a new package is private. The cluster pulls without credentials, so after the first run open *Packages → ff-logistics-app → Package settings → Change visibility → Public*. Otherwise the pod stays in `ImagePullBackOff`.
+- **The GHCR package's visibility**: a new package is private. The cluster pulls without credentials, so after the first run open *Packages → ff-devops-logistic-app/logistics-app → Package settings → Change visibility → Public*. Otherwise the pod stays in `ImagePullBackOff`.

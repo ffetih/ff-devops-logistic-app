@@ -116,7 +116,7 @@ ff-root  (auto sync: only Argo CD objects)
 
 ### Argo CD manages itself
 
-The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. After the first install it should show `Synced`; a diff there means the cluster and Git disagree about Argo CD itself.
+The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. Right after the first install the `argocd` Application shows `OutOfSync` on every object. The only difference is the `argocd.argoproj.io/tracking-id` annotation: Argo CD marks the objects it owns with it, and `kubectl apply` does not know about it. One manual sync adds the annotation and changes nothing else; Argo CD has then adopted its own installation. From there on, do not run `kubectl apply -k deploy/argocd` again: upgrades go through Git and a sync, and any later diff means the cluster and Git disagree about Argo CD itself.
 
 After this sprint's branch is merged, re-run the install once to create the root:
 

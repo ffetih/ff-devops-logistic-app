@@ -82,7 +82,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
 - [x] **S01-03 Add the logistics app skeleton**
   Spring Boot app on 8081, Actuator health with probes, info with `git.properties`, virtual threads, a health test.
   Port: `platform/ff-logistics/ff-logistics-app/pom.xml`, `LogisticsApplication.java`.
-- [ ] **S01-04 Add a container image for the logistics app**
+- [x] **S01-04 Add a container image for the logistics app**
   Java 25 JRE, non-root user. Local path: build in WSL, `k3d image import`.
   Port: `ff-logistics-app/Dockerfile`, `.dockerignore`.
   Done when: the image runs and answers `/actuator/health`.

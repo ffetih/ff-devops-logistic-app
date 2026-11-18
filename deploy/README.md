@@ -35,9 +35,13 @@ k3d cluster start ff-logistics
 Before CI publishes images, load a locally built one straight into the node:
 
 ```bash
+./build-all.sh
 docker build -t ghcr.io/ffetih/ff-logistics-app:local platform/ff-logistics/ff-logistics-app
+docker run --rm -p 18081:8081 ghcr.io/ffetih/ff-logistics-app:local   # then curl localhost:18081/actuator/health
 k3d image import ghcr.io/ffetih/ff-logistics-app:local -c ff-logistics
 ```
+
+Host port 8081 belongs to the cluster, so a plain `docker run` uses another one. An imported image is used when the values set `image.tag: local` (the pull policy for that tag is `IfNotPresent`).
 
 ## Argo CD
 

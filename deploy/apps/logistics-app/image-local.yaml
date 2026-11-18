@@ -1,0 +1,6 @@
+# Written by CI on every push to main (.github/workflows/ci.yml): the image it just
+# published. Nothing else lives here, so the bot's commit never touches a line that a
+# person edits in values-local.yaml. For an image loaded with `k3d image import`, set the
+# tag to "local" here by hand.
+image:
+  tag: 74c6c0621df68c7965214021c4efc66ef993dcc0

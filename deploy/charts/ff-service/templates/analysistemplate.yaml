@@ -1,0 +1,24 @@
+{{- if and .Values.rollout.enabled (eq .Values.rollout.strategy "canary") .Values.rollout.canary.analysis.enabled }}
+{{- $a := .Values.rollout.canary.analysis }}
+# Asks the canary pods whether this release may take traffic: the release health group of
+# the app, through the canary Service. Every answer has to be UP; one DOWN fails the
+# analysis, and a failed analysis aborts the rollout and scales the canary back to zero.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "ff-service.name" . }}-release
+  labels:
+    {{- include "ff-service.labels" . | nindent 4 }}
+spec:
+  metrics:
+    - name: release-health
+      interval: {{ $a.interval }}
+      count: {{ $a.count }}
+      failureLimit: 0
+      successCondition: result == "UP"
+      provider:
+        web:
+          url: "http://{{ include "ff-service.name" . }}-canary.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}{{ $a.path }}"
+          jsonPath: "{$.status}"
+          timeoutSeconds: 5
+{{- end }}

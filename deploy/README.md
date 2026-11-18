@@ -9,7 +9,7 @@ deploy/
 │   └── apps/                 what the root creates: AppProject, one Application per service
 ├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
 ├── charts/ff-service/        one Helm chart for every Spring service
-└── apps/<name>/              per-service values: values.yaml, values-local.yaml
+└── apps/<name>/              per-service values: values.yaml, values-local.yaml, image-local.yaml
 ```
 
 ## Cluster
@@ -92,14 +92,16 @@ Every Spring service is the same shape: a Deployment, a NodePort or ClusterIP Se
 ```text
 charts/ff-service/values.yaml          defaults for every service
 apps/<name>/values.yaml                this service, every environment (image, port)
-apps/<name>/values-local.yaml          this service on the local cluster (NodePort, image tag)
+apps/<name>/values-local.yaml          this service on the local cluster (NodePort, rollout, env)
+apps/<name>/image-local.yaml           the image tag on the local cluster, written by CI only
 ```
 
 Render locally the way Argo CD will:
 
 ```bash
-helm lint deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
-helm template logistics-app deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
+v=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml -f deploy/apps/logistics-app/image-local.yaml)
+helm lint deploy/charts/ff-service "${v[@]}"
+helm template logistics-app deploy/charts/ff-service "${v[@]}"
 ```
 
 The release name (`logistics-app`) names every object; in Argo CD it is the Application name.
@@ -130,7 +132,7 @@ argocd app wait logistics-app --health
 curl -s localhost:8081/actuator/health
 ```
 
-`logistics-app` deploys the image tag in `values-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
+`logistics-app` deploys the image tag in `image-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
 
 ## CI and image tags
 
@@ -140,14 +142,14 @@ curl -s localhost:8081/actuator/health
 java       ./build-all.sh with tests, keeps the jar
 manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
 images     main only, after both pass: build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
-           write the sha into deploy/apps/<name>/values-local.yaml, commit with [skip ci]
+           write the sha into deploy/apps/<name>/image-local.yaml, commit with [skip ci]
 ```
 
 From commit to cluster:
 
 ```text
 merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:<sha>
-                       └──► commit "Publish image tags" (values-local.yaml)
+                       └──► commit "Publish image tags" (image-local.yaml)
                                       │
                 Argo CD polls Git (about every 3 minutes)
                                       ▼
@@ -213,3 +215,28 @@ kubectl argo rollouts abort logistics-app -n ff-logistics                   # or
 ```
 
 `abort` leaves the Rollout `Degraded` while Git still asks for the new tag. Either promote later, or revert the tag in Git and sync.
+
+### Canary with analysis: the logistics app
+
+From S02-06 on, `values-local.yaml` releases the logistics app as a canary instead. Four pods, so each weight is whole pods:
+
+```text
+setWeight 25   1 canary pod, 3 stable          users: logistics-app ──► stable only
+analysis       3 × GET /actuator/health/release on logistics-app-canary, 10 s apart
+                 all UP  ──► go on                 one DOWN ──► abort, canary to 0 pods
+setWeight 50   2 canary, 2 stable
+pause 30s
+setWeight 100  the canary becomes stable
+```
+
+Without an ingress or a service mesh there is no traffic split by percent. The weights decide how many pods run the new version; the main Service keeps users on the stable pods, and the canary Service gives the analysis the new pods alone.
+
+Switching from blue-green removes the preview Service, so that sync needs prune too:
+
+```bash
+argocd app sync logistics-app --prune
+kubectl argo rollouts get rollout logistics-app -n ff-logistics --watch
+kubectl -n ff-logistics get analysisrun
+```
+
+A broken release on purpose: in `values-local.yaml` set `FF_RELEASE_HEALTHY` to `"false"`, commit, push, sync. The analysis run fails at 25 %, the rollout aborts and the canary pod goes away; users never left the stable pods. Argo CD shows `Degraded` because Git still asks for the broken release. Set it back to `"true"`, push and sync to recover.

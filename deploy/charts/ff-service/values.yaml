@@ -1,12 +1,12 @@
 # Defaults for every FF service. Per service, deploy/apps/<name>/values.yaml overrides these,
-# and deploy/apps/<name>/values-local.yaml overrides both (Helm: the last values file wins).
+# then values-local.yaml, then image-local.yaml (Helm: the last values file wins).
 #
 # The release name (in Argo CD: the Application name) is the name of the Deployment, the
 # Service and the container.
 
 image:
   repository: ""            # required, e.g. ghcr.io/ffetih/ff-devops-logistic-app/logistics-app
-  tag: ""                   # required; CI writes the commit SHA into values-local.yaml
+  tag: ""                   # required; CI writes the commit SHA into image-local.yaml
   pullPolicy: IfNotPresent  # tags are never reused, so a cached image is always the right one
 
 imagePullSecrets: []        # only needed while the GHCR package is private
@@ -34,6 +34,14 @@ rollout:
     scaleDownDelaySeconds: 30
   canary:
     steps: []               # no steps: like a rolling update
+    # On: a <name>-canary Service and an AnalysisTemplate <name>-release, which reads the
+    # release health group through that Service. Reference it from a step:
+    #   - analysis: {templates: [{templateName: <name>-release}]}
+    analysis:
+      enabled: false
+      path: /actuator/health/release
+      interval: 10s
+      count: 3              # three answers, all of them UP, or the release aborts
 
 # Extra container environment, as Kubernetes EnvVar entries (name/value or name/valueFrom)
 env: []

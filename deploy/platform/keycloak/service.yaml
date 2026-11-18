@@ -1,5 +1,6 @@
-# keycloak:8080 inside the cluster (the issuer in every token). NodePort 30180, which k3d
-# publishes on host port 8180, for the admin console and for runs from the IDE.
+# keycloak:8080 inside the cluster, for the identity service. NodePort 30180, which k3d
+# publishes on host port 8180: Keycloak's public address, the issuer in every token, the
+# admin console and runs from the IDE.
 apiVersion: v1
 kind: Service
 metadata:

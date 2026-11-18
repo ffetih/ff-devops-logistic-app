@@ -139,28 +139,29 @@ Three pull requests, so each strategy can be watched on the cluster before the n
 
 ## S3 — Tenant, web and persistence base
 
-Goal: the app stores tenant-scoped data in PostgreSQL running in the cluster.
+Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster; the logistics app reaches it, and its schema is migrated by an Argo CD hook before new pods start. Business tables arrive with their modules (S5 on).
 
-- [ ] **S03-01 Add the tenant library**
+- [x] **S03-01 Publish an image only when its service changed**
+  Every push to `main` used to build a new image, so a change to values alone started a full canary. CI now compares the push with what was there before and builds a service only when its folder, `base/` or the Maven Wrapper changed. Also moves `checkout` and `setup-java` to v5 (Node 20 is deprecated on the runners).
+- [ ] **S03-02 Add the tenant library**
   Port: `base/ff-base-tenant`.
   Absorbs: `4c37ac8` (one tenant id format).
-- [ ] **S03-02 Add RFC 9457 problem responses**
+- [ ] **S03-03 Add RFC 9457 problem responses**
   Port: `base/ff-base-web`.
   Absorbs: `42db7f4` (one 503 handler for missing dependencies).
-- [ ] **S03-03 Add tenant-aware persistence**
-  Hibernate `@TenantId`, database sequences, auto-configuration.
+- [ ] **S03-04 Add tenant-aware persistence**
+  Hibernate `@TenantId`, database sequences, auto-configuration. Not used by the app until its first entity (S5).
   Port: `base/ff-base-persistence`.
-- [ ] **S03-04 Run PostgreSQL 17 in the cluster**
-  Application `postgres` with sync wave `-1`, a PVC, init SQL for all databases from a ConfigMap, NodePort 5432 for IDE runs.
-  Port: `deploy/overlays/local/platform/postgres*`.
-- [ ] **S03-05 Migrate the schema with Flyway, tested on PostgreSQL**
-  Testcontainers test against PostgreSQL 17; most tests stay on H2.
+- [ ] **S03-05 Run PostgreSQL 17 in the cluster**
+  Application `postgres` in the app of apps: a StatefulSet with a volume, a Secret with local-only credentials, NodePort 5432 for runs from the IDE.
+  Port: `deploy/overlays/local/platform/postgres.yaml`.
+  Done when: `psql -h localhost -U fflogistics ff_logistics` answers from WSL.
+- [ ] **S03-06 Connect the logistics app to PostgreSQL with Flyway**
+  Datasource, Flyway and a first migration that only starts the schema history. A Testcontainers test runs the migrations on PostgreSQL 17 and is skipped where Docker is missing; the other tests use H2. The IDE runs against the cluster's database on `localhost:5432`.
   Absorbs: `c3247b7`, `846888f`.
-- [ ] **S03-06 Run migrations as a PreSync hook**
-  A Job with the app image and Flyway only, `hook-delete-policy: BeforeHookCreation`. The app itself starts with Flyway validation only.
-  Done when: a sync with a new migration shows the hook Job before the Deployment rolls.
-- [ ] **S03-07 Document the IDE loop**
-  App from IntelliJ, profile `local`, against the cluster's PostgreSQL on `localhost:5432`.
+- [ ] **S03-07 Run migrations as a PreSync hook**
+  A Job with the app image in the `migrate` profile: it migrates and exits. `hook-delete-policy: BeforeHookCreation`. The pods themselves do not run Flyway. Migrations must stay compatible with the version still running: the old pods keep serving while the hook runs.
+  Done when: a sync shows the hook Job complete before the Rollout starts a new revision, and `flyway_schema_history` has the row.
 
 ## S4 — Identity
 

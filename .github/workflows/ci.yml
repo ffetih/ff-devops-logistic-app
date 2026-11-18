@@ -1,7 +1,8 @@
 # Every push and pull request: build and test with the same script as locally, and render
-# what Argo CD will render. On a push to main, after both pass, publish the images to GHCR
-# and commit the new tags into deploy/apps/*/image-local.yaml. Argo CD then shows those
-# Applications OutOfSync until someone syncs them.
+# what Argo CD will render. On a push to main, after both pass, publish the images of the
+# services this push changed to GHCR and commit their new tags into
+# deploy/apps/*/image-local.yaml. Argo CD then shows those Applications OutOfSync until
+# someone syncs them.
 #
 # The tag commit carries [skip ci] in its message; GitHub does not start workflows for it.
 name: CI
@@ -25,8 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
@@ -45,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: azure/setup-helm@v4
       # Each service the way Argo CD renders it: the shared chart, then its two values files.
       - name: Helm lint and template
@@ -80,7 +81,10 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so this push can be compared with what main was before it.
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: ff-logistics-app-jar
@@ -88,18 +92,35 @@ jobs:
       - name: Build and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          # A service gets a new image only when this push changed something it is built from:
+          # its own folder, the base libraries or the Maven Wrapper. A change to values or docs
+          # alone keeps the current image, so it does not start a new rollout. Without a usable
+          # "before" (the first push, a forced push) every service is built.
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            BEFORE=""
+          fi
+          changed() {
+            [ -z "$BEFORE" ] || ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- "$1" base .mvn mvnw
+          }
+          : > "$RUNNER_TEMP/published"
           # Images live under the repository's name (ghcr.io/<owner>/<repo>/<service>), so a new
           # package is created by and linked to this repository. A bare ghcr.io/<owner>/<service>
           # may already belong to another repository, and then GITHUB_TOKEN cannot write to it.
           prefix="$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           publish() {
+            if ! changed "$2"; then
+              echo "$1: nothing under $2, base/ or the wrapper changed; keeping its current image"
+              return
+            fi
             image="${prefix}/$1:${GITHUB_SHA}"
             # The source label links the package to this repository on GitHub.
             docker build --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -t "$image" "$2"
             docker push "$image"
+            echo "$1" >> "$RUNNER_TEMP/published"
           }
           publish logistics-app platform/ff-logistics/ff-logistics-app
       - name: Commit image tags
@@ -111,9 +132,13 @@ jobs:
             echo "origin/main has moved past ${GITHUB_SHA}; leaving the recorded tags alone"
             exit 0
           fi
+          if [ ! -s "$RUNNER_TEMP/published" ]; then
+            echo "no image was published; nothing to record"
+            exit 0
+          fi
           git checkout -B main
           # The whole file is rewritten: it holds the tag and nothing a person edits.
-          for app in logistics-app; do
+          while read -r app; do
             printf '%s\n' \
               "# Written by CI on every push to main (.github/workflows/ci.yml): the image it just" \
               "# published. Nothing else lives here, so the bot's commit never touches a line that a" \
@@ -121,7 +146,7 @@ jobs:
               "# tag to \"local\" here by hand." \
               "image:" \
               "  tag: ${GITHUB_SHA}" > "deploy/apps/$app/image-local.yaml"
-          done
+          done < "$RUNNER_TEMP/published"
           git add deploy/apps/*/image-local.yaml
           if git diff --cached --quiet; then
             echo "image tags already record ${GITHUB_SHA}"

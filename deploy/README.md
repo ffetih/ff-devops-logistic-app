@@ -141,7 +141,8 @@ curl -s localhost:8081/actuator/health
 ```text
 java       ./build-all.sh with tests, keeps the jar
 manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
-images     main only, after both pass: build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
+images     main only, after both pass, for each service this push changed (its folder, base/,
+           the wrapper): build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
            write the sha into deploy/apps/<name>/image-local.yaml, commit with [skip ci]
 ```
 
@@ -155,6 +156,8 @@ merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-
                                       ▼
                        logistics-app OutOfSync ──► manual sync ──► new pod
 ```
+
+A push that changes only values, charts or docs builds no image and makes no tag commit: the running image stays, and only the changed values reach the cluster on the next sync.
 
 Before the first image push works, check two settings once:
 

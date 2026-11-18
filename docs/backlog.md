@@ -119,7 +119,7 @@ Three pull requests, so each strategy can be watched on the cluster before the n
 
 - [x] **S02-01 Note how Argo CD adopted its own installation**
   The first diff of the `argocd` Application was only `argocd.argoproj.io/tracking-id` on every object, because `kubectl apply` does not set it. One sync adds it; from then on Argo CD is upgraded through Git only.
-- [ ] **S02-02 Install Argo Rollouts through Argo CD**
+- [x] **S02-02 Install Argo Rollouts through Argo CD**
   Pinned controller release through a kustomization, an Application in the app of apps, server-side apply for the CRDs. The `kubectl argo rollouts` plugin and its dashboard go into the deploy guide.
   Done when: `argo-rollouts` is `Synced/Healthy` and `kubectl argo rollouts version` shows the same version as the controller.
 - [ ] **S02-03 Let the chart render a Rollout instead of a Deployment**

@@ -7,6 +7,7 @@ deploy/
 ├── cluster/k3d-config.yaml   the local cluster: k3s version, host ports
 ├── argocd/                   Argo CD: pinned release, local patches, root Application
 │   └── apps/                 what the root creates: AppProject, one Application per service
+├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml
 ```
@@ -111,6 +112,7 @@ The release name (`logistics-app`) names every object; in Argo CD it is the Appl
 ff-root  (auto sync: only Argo CD objects)
 ├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
 ├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
+├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
@@ -156,3 +158,27 @@ Before the first image push works, check two settings once:
 
 - **Settings → Actions → General → Workflow permissions**: the `images` job asks for `contents: write` and `packages: write` itself, but a repository set to read-only with no override still blocks the tag commit. If the push is refused, choose *Read and write permissions*.
 - **The GHCR package's visibility**: a new package is private. The cluster pulls without credentials, so after the first run open *Packages → ff-devops-logistic-app/logistics-app → Package settings → Change visibility → Public*. Otherwise the pod stays in `ImagePullBackOff`.
+
+## Argo Rollouts
+
+The controller comes from `deploy/platform/argo-rollouts` through the `argo-rollouts` Application. Sync it before the first Rollout reaches the cluster:
+
+```bash
+argocd app sync argo-rollouts && argocd app wait argo-rollouts --health
+kubectl -n argo-rollouts get pods
+```
+
+The kubectl plugin talks to the same controller from WSL. Same version as the controller:
+
+```bash
+curl -sSL -o kubectl-argo-rollouts https://github.com/argoproj/argo-rollouts/releases/download/v1.10.2/kubectl-argo-rollouts-linux-amd64
+sudo install -m 555 kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts && rm kubectl-argo-rollouts
+kubectl argo rollouts version
+```
+
+Watch a rollout live, or open the dashboard on `http://localhost:3100`:
+
+```bash
+kubectl argo rollouts get rollout logistics-app -n ff-logistics --watch
+kubectl argo rollouts dashboard
+```

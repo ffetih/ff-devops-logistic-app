@@ -58,8 +58,11 @@ jobs:
             helm template "$name" deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml" > /dev/null
             echo "::endgroup::"
           done
-      - name: Argo CD kustomization
-        run: kubectl kustomize deploy/argocd > /dev/null
+      - name: Kustomizations
+        run: |
+          set -euo pipefail
+          kubectl kustomize deploy/argocd > /dev/null
+          kubectl kustomize deploy/platform/argo-rollouts > /dev/null
 
   images:
     name: Publish images

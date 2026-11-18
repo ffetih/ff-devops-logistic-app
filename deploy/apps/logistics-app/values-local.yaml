@@ -26,4 +26,4 @@ rollout:
 # rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
 env:
   - name: FF_RELEASE_HEALTHY
-    value: "true"
+    value: "false"

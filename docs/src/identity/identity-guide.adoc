@@ -1,0 +1,189 @@
+= {project-name}: Identity Service Guide
+include::../_attributes.adoc[]
+// Revision of the latest change, written by docs/revisions.sh during the build (absent in a preview).
+include::../../build/revisions/identity-guide.adoc[opts=optional]
+:doctype: book
+
+[preface]
+== About this guide
+
+`platform/ff-identity/identity-service` is a shared runtime service, usable by any product: it signs users in, publishes the keys products verify tokens with, and lets tenant administrators create users.
+How services check tokens on their side (the three gates, the local profile) is in the link:{url-platform-guide}#security-model[Platform Guide]; how it reaches the cluster is in link:{url-platform-guide}#delivery[Delivery path].
+
+[[identity-service]]
+== How it works
+
+`platform/ff-identity/identity-service` is the only process that talks to Keycloak. Clients sign in through it, services verify tokens with the public keys it publishes, and tenant administrators manage users through it. It calls Keycloak inside the cluster on `http://keycloak:8080`; the tokens name Keycloak's public address, `{keycloak-public}/realms/{keycloak-realm}`, as their issuer (<<addresses>>).
+
+[plantuml,identity-flow,svg]
+----
+@startuml
+actor User
+participant "identity-service\n:8085" as id
+participant "Keycloak\nkeycloak:8080" as kc
+participant "ff-logistics-app\n:8081" as app
+
+User -> id : POST /sessions {username, password}
+id -> kc : password grant (client ff-logistics-api)
+kc --> id : access + refresh token
+id --> User : accessToken, refreshToken, expiresIn
+... every 15 s ...
+id -> kc : GET realm certs
+kc --> id : JWKS (kept in memory)
+... later ...
+User -> app : GET /api/v1/... Bearer <accessToken>
+app -> id : GET /jwks (cached by the app's JwtDecoder)
+app -> app : verify signature, expiry, issuer, audience, tenant_id
+app --> User : 200 / 401 / 403
+@enduml
+----
+
+[cols="1,2,1,3",options="header"]
+|===
+| Method | Path | Access | Purpose
+
+| POST | `/sessions` | public | Sign in with user name and password. Returns `accessToken`, `refreshToken`, `expiresIn` (seconds), `tokenType`.
+| POST | `/sessions/client` | public | A customer's system signs in with its integration client: `{"clientId": "integration-…", "clientSecret": "…"}`. Same answer as `/sessions`, without `refreshToken`: the system signs in again when the token expires. Any client not named `integration-*` gets `401`, as does a wrong secret (<<integration-clients>>).
+| POST | `/sessions/refresh` | public | New tokens for `{"refreshToken": "…"}`.
+| POST | `/logout` | public | Ends the session of `{"refreshToken": "…"}`. Answers `204`.
+| GET | `/jwks` | public | Public signing keys (JSON Web Key Set). Products point `jwk-set-uri` here.
+| POST | `/service-tokens` | header `X-Broker-Key` | Client-credentials token for system-to-system calls. It carries no `tenant_id`, so tenant-scoped product endpoints reject it.
+| POST | `/api/v1/users` | `TENANT_ADMIN` | Creates a user with roles in the *caller's* tenant (see below).
+| POST | `/api/v1/integration-clients` | `TENANT_ADMIN` | Issues an integration client in the *caller's* tenant for `{"name": "erp"}`. Answers `201` with `clientId`, `clientSecret` (shown only here), `tenantId` and `roles` (<<integration-clients>>).
+|===
+
+* *JWKS relay:* the service loads Keycloak's keys at startup and every 15 seconds. A failed refresh keeps the last good keys, so a short Keycloak outage does not stop token verification in the products.
+* *User administration:* the new user's tenant is read from the administrator's verified token; the request has no tenant field. `firstName` and `lastName` are optional. Keycloak stores the tenant only because the realm's user profile declares it (<<user-profile>>). The service rejects any request field it does not define (`spring.jackson.deserialization.fail-on-unknown-properties: true`), so an attempt to send `tenantId` fails with `400` before Keycloak is called. A token whose `tenant_id` breaks the platform format (2 to 64 lower-case letters, digits or hyphens, starting with a letter or digit) is refused with `401` and creates nobody. Allowed roles: `TENANT_ADMIN`, `LOGISTICS_PLANNER`, `WAREHOUSE_OPERATOR`, `DISPATCHER`, `REPORT_VIEWER`.
+* *Broker key:* `IDENTITY_BROKER_KEY` is a platform secret for `/service-tokens`. It is compared in constant time and is not the Keycloak client secret, which never leaves the identity service.
+* *Configuration:* `identity.keycloak.*` (base URL, issuer, realm, client IDs, admin account) and `identity.broker-key`, all overridable through the `IDENTITY_*` environment variables. In the cluster they come from `deploy/apps/identity/values-local.yaml` and the `keycloak-credentials` Secret (<<configuration>>).
+
+[[addresses]]
+== Keycloak's two addresses
+
+Keycloak runs with `--hostname={keycloak-public}` and `--hostname-backchannel-dynamic=true`:
+
+[cols="1,2,2",options="header"]
+|===
+| Address | Used by | For
+
+| `{keycloak-public}` | browsers, every redirect, the `iss` claim of every token | the admin console, sign-in pages; the issuer services expect
+| `http://keycloak:8080` | the identity service, inside the cluster | password and client-credentials grants, JWKS, the admin API
+|===
+
+A browser on the host cannot resolve `keycloak`, so that name must never reach a page; the services, in turn, never need the host's port. Backchannel-dynamic lets Keycloak answer the in-cluster calls on the address they came in on while the issuer stays the public one. On a real cluster the public address would be the ingress host.
+
+[[integration-clients]]
+== Integration clients
+
+A customer's system (their ERP, the partner gateway acting for them) does not sign in as a person. It gets a confidential Keycloak client of its own and uses the client credentials grant:
+
+* *Id:* `integration-<tenant>.<name>`, for example `integration-ff-eu-freight.erp`. The tenant is part of the id, so two tenants can both name theirs `erp`; the dot occurs in neither part, so no two pairs give the same id. `name` is 2 to 41 lower-case letters, digits or hyphens.
+* *Tenant:* a hard-coded `tenant_id` claim on the client, taken from the administrator's verified token. Nothing in the request names a tenant, and an attempt to send one fails with `400`.
+* *Rights:* the client's service account has only `LOGISTICS_PLANNER`, so the system can do what a planner of that tenant can and nothing more. Shipments it creates carry the service account (`service-account-integration-…`).
+* *Audience:* an audience mapper adds `ff-logistics-api`, so the products accept the token like a user's.
+* *No user, no password, no refresh token:* the secret is generated by Keycloak, returned once, and can be rotated in Keycloak without touching any user. Removing the client ends the integration.
+
+`/sessions/client` accepts only `integration-*` clients. The platform's own clients (`ff-logistics-service` for `/service-tokens`, the public `ff-logistics-api`) never get a token through it, even with the right secret.
+
+[source,http]
+----
+POST http://localhost:8085/api/v1/integration-clients
+Authorization: Bearer <a TENANT_ADMIN token>
+Content-Type: application/json
+
+{ "name": "erp" }
+----
+
+The realm file contains two partner clients, `integration-ff-eu-freight.northfield` and `integration-ff-tr-distribution.corvane`, with local secrets, for the partner gateway that comes later.
+
+== Connecting a new service
+
+A service needs three settings and the `siose-ff-base-security` library; it never calls Keycloak:
+
+[source,yaml]
+----
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${IDENTITY_JWKS_URI:http://localhost:8085/jwks}      # keys from the identity service
+          issuer-uri: ${IDENTITY_TOKEN_ISSUER:http://localhost:8180/realms/ff-logistics}  # expected "iss"
+          audiences: ff-logistics-api                                       # expected "aud"
+----
+
+`issuer-uri` here is only the expected `iss` claim; because `jwk-set-uri` is set, Spring Boot does not contact the issuer.
+
+[[user-profile]]
+== The realm's user profile
+
+Keycloak 26 checks every user against the realm's declared user profile. Two of its rules matter here:
+
+* *An attribute the profile does not declare is dropped without an error.* So `tenant_id` is declared, editable by administrators only (a user cannot move to another tenant in Keycloak's account console) and checked against the tenant id format.
+* *An attribute the profile requires blocks the password sign-in until it is filled.* Keycloak's default requires first and last name; ours keeps them optional, because the user API does not require them.
+
+The profile is `deploy/platform/keycloak/user-profile.json`; the realm file carries the same profile, and `KeycloakRealmTest` fails when the two differ. Only the realm file is mounted into Keycloak's import directory: `--import-realm` reads every `.json` there as a realm, and Keycloak stops at start (`Failed to run import`) on the user profile file.
+
+Keycloak runs in dev mode and keeps nothing between restarts, so every start imports the realm file, profile included. A change to the realm file renames its generated ConfigMap, which restarts Keycloak on the next sync of the `keycloak` Application. The price: users and clients created through the API are gone after a restart.
+
+== Testing
+
+`IdentityApiTest` starts the full Spring context with the real security configuration and talks to `FakeKeycloak`, an in-process stand-in for Keycloak, so it needs no running infrastructure. `KeycloakRealmTest` starts Keycloak {keycloak-version}, the version the cluster runs, with the realm file through Testcontainers, and checks what the fake cannot: a user created through the broker signs in with a password and its token carries `tenant_id` and its roles, names are kept when given, the realm's own users still sign in, the realm's integration clients get tokens with their tenant, the audience and only `LOGISTICS_PLANNER`, a client issued through the broker signs in for its tenant, and the realm file and `user-profile.json` declare the same profile. It is skipped where no Docker is reachable; CI and WSL always run it. Build and test only this service with:
+
+[source,bash]
+----
+./mvnw -f platform/ff-identity/identity-service/pom.xml verify
+----
+
+[[configuration]]
+== Configuration reference
+
+[cols="2,2,3",options="header"]
+|===
+| Property | Environment variable | Meaning
+
+| `identity.keycloak.base-url` | `IDENTITY_KEYCLOAK_BASE_URL` (cluster: `http://keycloak:8080`, default: `{keycloak-public}`) | Where the service calls Keycloak.
+| `identity.keycloak.issuer` | `IDENTITY_KEYCLOAK_ISSUER` (`{keycloak-public}/realms/{keycloak-realm}`) | The `iss` every token carries: Keycloak's public address.
+| `identity.keycloak.admin-username` / `admin-password` | `IDENTITY_KEYCLOAK_ADMIN_USERNAME` / `…_PASSWORD` | Admin account used to create users and integration clients.
+| `identity.keycloak.service-client-secret` | `IDENTITY_KEYCLOAK_SERVICE_CLIENT_SECRET` | Secret of the `ff-logistics-service` client.
+| `identity.broker-key` | `IDENTITY_BROKER_KEY` | Shared secret for `/service-tokens`.
+|===
+
+== Known gaps
+
+* Tenants and their first administrator are created directly in Keycloak; the identity service has no tenant-provisioning API.
+* Integration clients can be issued through the API, but listing, rotating the secret and removing them are done in Keycloak.
+
+[[faq]]
+== Frequently asked questions
+
+A user I created through the API signs in, but the products answer `401` for every call. Why?::
+The user has no tenant: Keycloak dropped `tenant_id` because the realm's user profile did not declare it. The realm file declares it; check that the realm was imported from the current file (<<user-profile>>).
+
+Why does creating a user with a `tenantId` field fail with `400`?::
+The tenant always comes from the administrator's verified token, so a request cannot place a user in another tenant. Leave the field out.
+
+How do I give an existing user another role?::
+The API only creates users; roles of an existing user are changed in the Keycloak admin console on `{keycloak-public}/admin`. In dev mode the change lasts until Keycloak restarts; a lasting role goes into the realm file.
+
+I lost an integration client's secret. Can I get it again?::
+No, it is shown only once. Generate a new secret for the client in Keycloak, put it where the system reads it, and the old one stops working (<<integration-clients>>).
+
+My token from `/service-tokens` is refused by the products. Why?::
+A service token carries no `tenant_id`, and every tenant-scoped endpoint refuses a token without one. A customer's system uses an integration client instead (<<integration-clients>>).
+
+I changed the realm file, but Keycloak does not show the change. Why?::
+The change reaches Keycloak only through a sync: the realm file becomes a ConfigMap whose name carries a hash of the file, so the sync restarts Keycloak and it imports the new realm. Run `argocd app sync keycloak` after the merge.
+
+The admin console shows "Timeout when waiting for 3rd party check iframe message". Why?::
+A page sent the browser to an address it cannot resolve, typically `keycloak:8080`. Keycloak's `--hostname` must be its public address, `{keycloak-public}` (<<addresses>>).
+
+Why do the services not call Keycloak themselves?::
+Only the identity service talks to Keycloak. Services verify tokens with `/jwks`, so Keycloak can be restarted, upgraded or replaced without touching them.
+
+[glossary]
+== Glossary
+
+include::../shared/glossary.adoc[]
+
+include::../../build/revisions/identity-guide-history.adoc[opts=optional]

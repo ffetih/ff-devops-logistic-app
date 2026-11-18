@@ -1,0 +1,64 @@
+// Shared glossary. Included by every guide.
+[glossary]
+Tenant::
+A customer organisation using the platform. Each tenant sees only its own data. Examples in this project: `ff-eu-freight`, `ff-tr-distribution`.
+
+GS1::
+The global standards body behind barcodes. The platform uses three GS1 identifiers: GLN, GTIN and SSCC.
+
+GLN (Global Location Number)::
+A 13-digit number that identifies a physical location such as a warehouse, hub or loading dock. The last digit is a check digit.
+
+GTIN (Global Trade Item Number)::
+The number behind a product barcode (8, 12, 13 or 14 digits). Identifies *what* the product is.
+
+SSCC (Serial Shipping Container Code)::
+An 18-digit number that identifies one physical logistics unit, usually a pallet. Identifies *which* pallet it is. The platform generates SSCCs.
+
+GS1 company prefix::
+The number range GS1 assigns to a company (6 to 10 digits). It forms the start of the GLNs, GTINs and SSCCs that company issues.
+
+ISO 6346::
+The standard for container and trailer codes, for example `CSQU3054383`: owner code, equipment category, serial number and a check digit.
+
+e-CMR::
+The electronic version of the CMR consignment note, the legal document that accompanies goods transported by road. Defined by UN/CEFACT.
+
+e-PoD (electronic Proof of Delivery)::
+Evidence that goods were delivered: a signature, a time and optionally a photo.
+
+Incoterm::
+A standard trade term (for example `DAP`, Delivered At Place) that defines which party pays for and is responsible for each part of the transport.
+
+Intermodal transport::
+Moving one loading unit (container, trailer or swap body) through several transport modes, for example road, then Ro-Ro ship, then rail, without unloading the goods.
+
+Ro-Ro (Roll-on/Roll-off)::
+A ship that trucks and trailers drive on and off.
+
+Leg::
+One part of a shipment that uses a single transport mode, for example the rail part from Trieste to Mannheim.
+
+Territory::
+A geographic distribution area served from one hub, with its customer points and visit targets.
+
+OTM (OpenTripModel)::
+An open data standard for exchanging trip and route information between transport systems.
+
+OTIF (On-Time In-Full)::
+A delivery KPI: the share of orders delivered on the promised date with the complete quantity.
+
+EN 16258 / GLEC Framework::
+Methods for calculating the greenhouse-gas emissions of transport. EN 16258 has since been superseded by ISO 14083.
+
+CO~2~e::
+Carbon dioxide equivalent: all greenhouse gases expressed as the amount of CO~2~ with the same effect.
+
+Keycloak::
+The identity server. Users sign in there and receive an access token.
+
+Access token (JWT)::
+A signed digital pass that Keycloak issues after sign-in. It states who the user is, their tenant and their roles.
+
+Row-Level Security (RLS)::
+A database feature that filters table rows per tenant, so a query can never return another tenant's rows.

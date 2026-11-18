@@ -1,0 +1,34 @@
+// Shared attributes. Every guide includes this file at the top.
+:project-name: FF Logistics Platform
+:project-version: 0.1.0-SNAPSHOT
+// The header shows "Revision <commit>, <date>" (docs/revisions.sh sets :revnumber: and :revdate:).
+:version-label: Revision
+:java-version: 25
+:spring-boot-version: 4.1.2
+:spring-modulith-version: 2.1.1
+:keycloak-version: 26.8.2
+:argocd-version: 3.6.1
+:rollouts-version: 1.10.2
+:keycloak-realm: ff-logistics
+:keycloak-client: ff-logistics-api
+:keycloak-public: http://localhost:8180
+:port-argocd: 8080
+:port-app: 8081
+:port-identity: 8085
+:port-keycloak: 8180
+:port-postgres: 5432
+// Links between guides. Every guide is built into its own folder one level below docs/build/html,
+// so these relative paths work from every guide (see "Working on this documentation" in the Platform Guide).
+:url-platform-guide: ../platform/platform-guide.html
+:url-identity-guide: ../identity/identity-guide.html
+:url-repo: https://github.com/ffetih/ff-devops-logistic-app
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectanchors:
+:icons: font
+:experimental:
+:source-highlighter: rouge
+:plantuml-format: svg
+:imagesdir: images
+:xrefstyle: short

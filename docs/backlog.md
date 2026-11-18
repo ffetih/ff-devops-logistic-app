@@ -200,8 +200,8 @@ Three pull requests:
 - [x] **S04-07 Generate service Applications with an ApplicationSet**
   Git directory generator over `deploy/apps/*`; the hand-written `logistics-app` and `identity` Applications go away.
   Done when: adding a folder under `deploy/apps/` creates an Application without touching Argo CD config.
-- [ ] **S04-08 Build the documentation site in CI**
-  AsciiDoc under `docs/src`, one guide per deployable, built and checked for warnings on every push.
+- [x] **S04-08 Build the documentation site in CI**
+  AsciiDoc under `docs/src`, built and checked for warnings on every push. Starts with the Platform Guide (architecture, delivery path, base libraries, security) and the Identity Service Guide; later guides come with the parts they describe.
   Port: `docs/build-docs.*`, `docs/src/index.adoc`, `_attributes.adoc`.
   Absorbs: `a87c1ec` (fail on warnings).
 

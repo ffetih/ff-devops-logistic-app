@@ -1,0 +1,32 @@
+= {project-name} Documentation
+include::_attributes.adoc[]
+:toc!:
+:sectnums!:
+
+The {project-name} is a multi-tenant logistics platform, rebuilt sprint by sprint so that every change reaches a local Kubernetes cluster through Git, CI and Argo CD.
+It is a practice project inspired by integrated logistics providers, and it follows public logistics standards (GS1, ISO 6346, UN/CEFACT e-CMR, OpenTripModel, EN 16258).
+
+Pick the guide that matches what you need:
+
+[cols="2,2,3",options="header"]
+|===
+| Guide | For | Answers
+
+| link:platform/platform-guide.html[Platform Guide]
+| Developers, DevOps
+| How do the parts fit together, how does a change reach the cluster, and what do all services share (base libraries, security, multi-tenancy)?
+
+| link:identity/identity-guide.html[Identity Service Guide]
+| Developers of any service
+| How do users and partner systems sign in, how does a service verify tokens, how are users created?
+|===
+
+More guides come with the parts they describe (logistics, analytics, integration, console); the plan is in `docs/backlog.md`.
+
+Version: {project-version}
+
+== How these documents are maintained
+
+* Every guide lives under `docs/src`, together with the shared attributes, the glossary and the roles matrix.
+* A change that alters behaviour updates the matching guide in the same commit.
+* CI builds the site on every push and fails on any warning. Locally: `./docs/build-docs.sh` in WSL. See link:platform/platform-guide.html#docs[Working on this documentation].

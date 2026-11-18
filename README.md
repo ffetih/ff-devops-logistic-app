@@ -4,6 +4,7 @@ A multi-tenant logistics platform (Java 25, Spring Boot 4.1, Spring Modulith 2.1
 
 - Plan and progress: [docs/backlog.md](docs/backlog.md)
 - Cluster and Argo CD: [deploy/README.md](deploy/README.md)
+- Guides (AsciiDoc): [docs/src](docs/src), built with `./docs/build-docs.sh` into `docs/build/html`, and by CI as the `docs-html` artifact of every run
 
 ## Requirements
 

@@ -1,0 +1,265 @@
+= {project-name}: Platform Guide
+include::../_attributes.adoc[]
+// Revision of the latest change, written by docs/revisions.sh during the build (absent in a preview).
+include::../../build/revisions/platform-guide.adoc[opts=optional]
+:doctype: book
+
+[preface]
+== About this guide
+
+How the parts of the {project-name} fit together, how a change travels from a commit to the local cluster, and what every service shares: the base libraries, the build platform, security and multi-tenancy.
+Step-by-step commands for the cluster, Argo CD and each Application are in `deploy/README.md`; the sprint plan is in `docs/backlog.md`.
+
+[[architecture]]
+== Architecture
+
+=== Overview
+
+Everything runs in one k3d cluster in WSL. Argo CD, inside the cluster, applies what is committed under `deploy/`; nothing else is applied by hand.
+
+[plantuml,architecture,svg,subs=attributes+]
+----
+@startuml
+skinparam componentStyle rectangle
+actor "Browser / curl\n(host)" as user
+node "k3d cluster ff-logistics" {
+  package "argocd" {
+    [Argo CD\n:{port-argocd}] as acd
+  }
+  package "argo-rollouts" {
+    [Rollouts controller] as ro
+  }
+  package "ff-logistics" {
+    [logistics-app\nRollout :{port-app}] as app
+    [identity\nDeployment :{port-identity}] as id
+    [Keycloak\n:{port-keycloak}] as kc
+    database "PostgreSQL 17\n:{port-postgres}" as pg
+  }
+}
+cloud "GitHub" {
+  [ff-devops-logistic-app\n(repository)] as repo
+  [GHCR images] as ghcr
+}
+user --> app : Bearer token
+user --> id : sign in
+id --> kc : grants, JWKS
+app --> id : JWKS
+app --> pg
+acd --> repo : poll
+acd --> app
+ro --> app : canary, analysis
+app ..> ghcr : image
+@enduml
+----
+
+[cols="1,1,3",options="header"]
+|===
+| Part | Kind | Job
+
+| `logistics-app` | Spring Boot, Rollout | The logistics product. Business modules arrive sprint by sprint; today it serves `/api/v1/me` and Actuator.
+| `identity` | Spring Boot, Deployment | The only process that calls Keycloak: sign-in, JWKS, users, integration clients (link:{url-identity-guide}[Identity Service Guide]).
+| Keycloak {keycloak-version} | platform | Identity provider with the `{keycloak-realm}` realm from Git.
+| PostgreSQL 17 | platform | Database `ff_logistics`; data on a volume Argo CD never prunes.
+| Argo CD {argocd-version} | platform | Applies `deploy/` from `main`; manages its own installation.
+| Argo Rollouts {rollouts-version} | platform | Releases the logistics app as a canary with an analysis.
+|===
+
+=== Technology stack
+
+* Java {java-version}, Spring Boot {spring-boot-version}, Spring Modulith {spring-modulith-version} (from the first module on)
+* Maven through the wrapper; no root `pom.xml`, every project builds on its own (<<build-platform>>)
+* k3d (k3s) in WSL, Helm for the services, Kustomize for the platform pieces
+* GitHub Actions and GitHub Container Registry
+* Argo CD and Argo Rollouts
+
+=== Repository layout
+
+[source,text]
+----
+base/          build time: BOM, parent POM and the shared libraries
+platform/      runtime: the services that get deployed
+deploy/        cluster config, Argo CD, platform pieces, the shared chart, per-service values
+docs/          backlog and these guides
+----
+
+[[delivery]]
+== Delivery path
+
+[plantuml,delivery,svg]
+----
+@startuml
+start
+:pull request;
+:CI: build and test (build-all),\nrender every chart and kustomization,\nbuild these docs;
+:merge to main;
+:CI: publish an image for each service\nthe push changed (its folder, base/, the wrapper);
+:CI: commit the new tag into\ndeploy/apps/<service>/image-local.yaml [skip ci];
+:Argo CD polls Git: Application OutOfSync;
+:operator syncs;
+:PreSync hook: Flyway migrates;
+:Rollout: 25 % → analysis → 50 % → 100 %;
+stop
+@enduml
+----
+
+* *Only Git changes the cluster.* No automated sync on the services: `main` is the only environment, so a merged change waits for an operator to sync it.
+* *One image per changed service.* A change to values or docs builds nothing; only the changed values reach the cluster on the next sync.
+* *The tag is the commit.* Images are `ghcr.io/ffetih/ff-devops-logistic-app/<service>:<commit sha>`. CI writes the tag into `image-local.yaml`, a file nobody edits by hand, so the bot's commit never collides with a person's.
+* *Migrations before pods.* A PreSync hook Job runs the same image in the `migrate` profile. If it fails, the sync stops and the running version keeps serving. Migrations must work for the old and the new version at once: expand first, contract a release later.
+* *A canary decides by itself.* The analysis reads `/actuator/health/release` on the canary pod three times; one `DOWN` aborts the release and scales the canary back. Users stay on the stable pods throughout.
+
+=== Argo CD layout
+
+[source,text]
+----
+ff-root (app of apps, auto sync: only Argo CD objects)
+├── AppProject ff-logistics      this repository, namespace ff-logistics only
+├── Application argocd           Argo CD itself
+├── Application argo-rollouts
+├── Application postgres         wave -1
+├── Application keycloak         wave -1
+└── ApplicationSet ff-services   one Application per folder under deploy/apps
+    ├── identity
+    └── logistics-app
+----
+
+A new service is a new folder under `deploy/apps` with three values files; the shared chart `deploy/charts/ff-service` renders a Deployment or a Rollout, its Services, the analysis and the migration hook from them.
+
+[[base-library]]
+== How a service uses the base libraries
+
+The base layer is small libraries. Each does one job, depends only on what that job needs, and switches itself on through Spring Boot auto-configuration. A service picks the libraries it needs; it never writes an annotation or a configuration class for them.
+
+[plantuml,base-libraries,svg]
+----
+@startuml
+skinparam componentStyle rectangle
+[ff-base-tenant\nTenantContext\n(no dependencies)] as tenant
+[ff-base-security\nJWT resource server,\ntenant filter] as sec
+[ff-base-persistence\n@TenantId entities,\nDatabaseSequences] as per
+[ff-base-web\nRFC 9457 problems] as web
+sec --> tenant
+per --> tenant
+web --> tenant
+@enduml
+----
+
+[cols="1,2,2",options="header"]
+|===
+| Library | Auto-configuration | Settings
+
+| `siose-ff-base-tenant` | none (plain Java) | -
+| `siose-ff-base-security` | `TenantSecurityAutoConfiguration`: stateless filter chain, `@PreAuthorize`, tenant filter | `ff.security.tenant-claim`, `ff.security.header-fallback.*`
+| `siose-ff-base-persistence` | `TenantPersistenceAutoConfiguration`: Hibernate tenant resolver, `DatabaseSequences` | -
+| `siose-ff-base-web` | `ProblemDetailAutoConfiguration`: problem responses | -
+|===
+
+* The logistics app uses `tenant` directly and `security` and `web` at `runtime` scope: its code never imports them, only their auto-configuration is used. `persistence` joins with the first entity.
+* *Replace* any piece by declaring your own bean: every auto-configured bean is `@ConditionalOnMissingBean`.
+* *No product names in base:* role names, sequence names or bucket contents live in the service and reach a library through configuration.
+* *Dependency hygiene:* base libraries fail the build on any unused or used-but-undeclared compile dependency; services only get warnings.
+
+[[build-platform]]
+== Build platform
+
+The projects do not inherit from `spring-boot-starter-parent`. Instead `base` owns two small POMs:
+
+[cols="1,2,2",options="header"]
+|===
+| POM | Holds | Change it when
+
+| `ff-base-bom` | Versions only: internal libraries plus the Spring Boot and Spring Modulith BOMs. | Upgrading Spring Boot or Spring Modulith, adding a library
+| `ff-base-parent` | Build rules: Java {java-version}, encoding, plugin versions and settings, enforcer rules. | Changing how projects are compiled, tested or packaged
+|===
+
+* All projects use the groupId `com.siose.ff`; the artifactId is the folder name with the prefix `siose-ff-`; Java packages follow it (`com.siose.ff.base.<library>`, `com.siose.ff.identity`, `com.siose.ff.logistics`).
+* Services never write a version for a base library; the BOM supplies it.
+* `build-all.sh` installs the BOM, the parent and the libraries into `~/.m2`, then builds every service with its tests. CI runs the same script.
+
+[[security-model]]
+== Security model
+
+A request passes three gates. Each is enforced by the framework, not by hand-written checks in the business code.
+
+[cols="1,2,1",options="header"]
+|===
+| Gate | Enforced by | Failure
+
+| *Who are you?* | The resource server verifies the access token locally: signature (JWKS from the identity service), expiry, issuer `{keycloak-public}/realms/{keycloak-realm}` and audience `{keycloak-client}`. The token must carry a well-formed `tenant_id`. | 401
+| *What may you do?* | Realm and client roles become `ROLE_*` authorities (`TenantJwtAuthenticationConverter`). Controllers declare `@PreAuthorize`. | 403
+| *Whose data?* | `TenantContextFilter` puts the token's tenant into `TenantContext`. With the first entity, Hibernate `@TenantId` adds `tenant_id = ?` to every query. | not found
+|===
+
+Actuator's health and info stay open: the probes and the canary analysis use them.
+
+=== Local profile
+
+`application-local.yml` of the logistics app sets `ff.security.header-fallback.enabled: true`, for runs from the IDE:
+
+* JWT validation is off. The caller is identified by `X-Tenant-Id`, `X-User-Name` and `X-User-Roles` (comma-separated).
+* Without `X-User-Roles` the caller gets `REPORT_VIEWER`, the narrowest role.
+* A request without `X-Tenant-Id` gets 401.
+
+CAUTION: The chart never sets the `local` profile. Never enable it outside a developer machine: anyone could claim any tenant and role.
+
+[[multi-tenancy]]
+== Multi-tenancy
+
+* A tenant id has one format, `TenantIds` in `siose-ff-base-tenant`: 2 to 64 lower-case letters, digits and hyphens, starting with a letter or digit. A token with any other `tenant_id` is refused with 401, so nothing downstream cleans or rewrites a tenant id.
+* There is no default tenant. Code that runs without one cannot save data, and reads return nothing.
+* From the first entity on, `TenantAwareEntity` is the base class of every entity; its `tenant_id` column is `@TenantId`, and Hibernate filters every query by the tenant in `TenantContext`.
+
+[[docs]]
+== Working on this documentation
+
+[source,text]
+----
+docs/
+├── backlog.md                           the sprint plan
+├── build-docs.sh                        builds the whole site (Docker)
+├── revisions.sh                         each guide's revision history from git (run by the build)
+└── src/
+    ├── index.adoc                       landing page
+    ├── _attributes.adoc                 shared attributes (ports, versions, links between guides)
+    ├── shared/                          glossary, roles matrix
+    ├── platform/platform-guide.adoc     this guide
+    └── identity/identity-guide.adoc
+----
+
+[source,bash]
+----
+./docs/build-docs.sh          # HTML       -> docs/build/html/index.html
+./docs/build-docs.sh pdf      # HTML + PDF -> docs/build/pdf
+----
+
+The script runs the pinned `asciidoctor/docker-asciidoctor` image with the repository mounted. Every guide goes into its own folder one level below `docs/build/html`, so links between guides are the same from every guide. Diagrams are PlantUML blocks rendered to SVG. Any warning fails the build, in CI too.
+
+Rules:
+
+* A guide starts with `include::../_attributes.adoc[]`. Link to another guide with the attributes defined there, for example `+link:{url-identity-guide}#configuration[Identity Service Guide]+`; never with a file path.
+* Values that appear in several places (ports, versions, the realm name) go into `_attributes.adoc` and are used as `\{port-app}`.
+* A new guide goes under `docs/src/<name>/` as `<something>-guide.adoc`, with an output folder in `build-docs.sh`, a `url-…` attribute, a line in `index.adoc`, and the two revision includes.
+* Update the guide in the same commit as the code change. `docs/build/` is generated; it is not committed.
+
+=== Revision history
+
+Every guide ends with a *Revision history* appendix, and its header shows the latest revision. Both come from git: `docs/revisions.sh` runs first in the build and writes, for each guide, the latest commit that touched it and the list of all of them (`git log --follow`, merges left out). The subject of a commit that changes a guide is what readers see, so it is written for them. CI checks out the full history for this.
+
+[[faq]]
+== Frequently asked questions
+
+A change I merged is not in the cluster. Why?::
+The services have no automated sync. Check that CI finished (for code changes: the "Publish image tags" commit), then `argocd app get <service> --refresh` and `argocd app sync <service>`.
+
+A values change started no canary. Why?::
+A change to values alone builds no image. The Rollout starts a new revision only when the pod template changes; an environment variable does, a Service setting does not.
+
+Why are Keycloak, PostgreSQL and Argo Rollouts not in the ApplicationSet?::
+Each is shaped differently (an upstream manifest, a volume that must never be pruned, a realm file), and there are few of them. The ApplicationSet covers what is alike: Spring services rendered by the shared chart.
+
+[glossary]
+== Glossary
+
+include::../shared/glossary.adoc[]
+
+include::../../build/revisions/platform-guide-history.adoc[opts=optional]

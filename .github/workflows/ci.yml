@@ -1,5 +1,5 @@
-# Every push and pull request: build and test with the same script as locally, and render
-# what Argo CD will render. On a push to main, after both pass, publish the images of the
+# Every push and pull request: build and test with the same script as locally, render
+# what Argo CD will render, and build the documentation site. On a push to main, after both pass, publish the images of the
 # services this push changed to GHCR and commit their new tags into
 # deploy/apps/*/image-local.yaml. Argo CD then shows those Applications OutOfSync until
 # someone syncs them.
@@ -78,6 +78,23 @@ jobs:
           kubectl kustomize deploy/platform/argo-rollouts > /dev/null
           kubectl kustomize deploy/platform/postgres > /dev/null
           kubectl kustomize deploy/platform/keycloak > /dev/null
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history: each guide's revision table is made from git log.
+          fetch-depth: 0
+      # Fails on any warning (--failure-level WARN), so a broken cross reference fails the run.
+      - run: ./docs/build-docs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/build/html
+          retention-days: 7
 
   images:
     name: Publish images

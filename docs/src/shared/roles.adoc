@@ -1,0 +1,33 @@
+// Shared roles and permissions matrix. Included by the business and user guides.
+Roles are assigned through the identity service, which stores them in Keycloak (realm `{keycloak-realm}`).
+A user can hold several roles. Every role applies only inside the user's own tenant.
+
+[cols="2,3,^1,^1,^1,^1",options="header"]
+|===
+| Role | Typical job | Warehouse (WMS) | Shipments (TMS) | Routes (Geo) | Reports
+
+| `WAREHOUSE_OPERATOR`
+| Registers warehouses, receives pallets
+| ✔ | | |
+
+| `LOGISTICS_PLANNER`
+| Plans intermodal shipments, issues e-CMRs
+| | ✔ | |
+
+| `DISPATCHER`
+| Designs territories, plans delivery routes
+| | | ✔ |
+
+| `REPORT_VIEWER`
+| Reads the tenant dashboard
+| | | | read
+
+| `TENANT_ADMIN`
+| Administers the tenant: everything above except reading reports, records KPI snapshots and adds users
+| ✔ | ✔ | ✔ | write
+|===
+
+Reading reports needs `REPORT_VIEWER`, for a tenant administrator too: who can see the tenant's figures is exactly who holds that role. A tenant administrator who should read reports gets `REPORT_VIEWER` as a second role.
+
+A request without a valid sign-in is rejected with `401 Unauthorized`.
+A signed-in user without the needed role is rejected with `403 Forbidden`.

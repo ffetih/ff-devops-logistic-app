@@ -119,25 +119,41 @@ ff-root  (auto sync: only Argo CD objects)
 ├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
 ├── Application postgres        manual sync, wave -1: the database the services use
 ├── Application keycloak        manual sync, wave -1: the identity provider behind the identity service
-├── Application identity        manual sync: chart + apps/identity values (Deployment)
-└── Application logistics-app   manual sync: chart + apps/logistics-app values
+└── ApplicationSet ff-services   one Application per folder under deploy/apps:
+    ├── Application identity        manual sync: chart + apps/identity values (Deployment)
+    └── Application logistics-app   manual sync: chart + apps/logistics-app values (Rollout)
 ```
 
 ### Argo CD manages itself
 
 The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. Right after the first install the `argocd` Application shows `OutOfSync` on every object. The only difference is the `argocd.argoproj.io/tracking-id` annotation: Argo CD marks the objects it owns with it, and `kubectl apply` does not know about it. One manual sync adds the annotation and changes nothing else; Argo CD has then adopted its own installation. From there on, do not run `kubectl apply -k deploy/argocd` again: upgrades go through Git and a sync, and any later diff means the cluster and Git disagree about Argo CD itself.
 
-After this sprint's branch is merged, re-run the install once to create the root:
+On a fresh cluster the one `kubectl apply -k deploy/argocd` of the first install creates the root as well; after that, sync the Applications it creates:
 
 ```bash
-kubectl apply -k deploy/argocd --server-side --force-conflicts
-argocd app list                     # ff-root Synced, logistics-app OutOfSync
-argocd app sync logistics-app
-argocd app wait logistics-app --health
+argocd app list
+argocd app sync argo-rollouts postgres keycloak
+argocd app sync identity logistics-app
 curl -s localhost:8081/actuator/health
 ```
 
-`logistics-app` deploys the image tag in `image-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
+A service deploys the image tag in its `image-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
+
+### One ApplicationSet for every service
+
+`deploy/argocd/apps/services.yaml` is an ApplicationSet with a Git directory generator: every folder under `deploy/apps/` becomes an Application of the same name, rendered with the shared chart and that folder's three values files. Adding a service means adding a folder; nothing under `deploy/argocd` changes.
+
+```text
+deploy/apps/identity/       ──►  Application identity
+deploy/apps/logistics-app/  ──►  Application logistics-app
+deploy/apps/<new>/          ──►  Application <new>   (on the generator's next poll, about 3 minutes)
+```
+
+The platform pieces (Argo CD, Argo Rollouts, PostgreSQL, Keycloak) keep hand-written Applications: each is shaped differently, and there are few of them.
+
+The generated Applications have no automated sync, like the hand-written ones before them. `preserveResourcesOnDeletion` keeps the workloads if the ApplicationSet itself is deleted. Removing a folder deletes the generated Application but, without a resources finalizer, not what it deployed: clean that up on purpose.
+
+When this ApplicationSet replaced the hand-written `identity` and `logistics-app` Applications, `ff-root` pruned the old Application objects and the ApplicationSet created new ones with the same names. Neither step touched a pod: an Application without a finalizer leaves its resources behind when it is deleted, and a new Application of the same name recognises them as its own through the tracking annotation.
 
 ## CI and image tags
 

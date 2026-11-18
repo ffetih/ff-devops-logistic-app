@@ -3,6 +3,7 @@
 A multi-tenant logistics platform (Java 25, Spring Boot 4.1, Spring Modulith 2.1), rebuilt sprint by sprint from the `ff-devops-app` reference implementation. Every change reaches a local k3d cluster through Git and Argo CD.
 
 - Plan and progress: [docs/backlog.md](docs/backlog.md)
+- Cluster and Argo CD: [deploy/README.md](deploy/README.md)
 
 ## Requirements
 

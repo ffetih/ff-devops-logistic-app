@@ -5,7 +5,7 @@
 # Service and the container.
 
 image:
-  repository: ""            # required, e.g. ghcr.io/ffetih/ff-logistics-app
+  repository: ""            # required, e.g. ghcr.io/ffetih/ff-devops-logistic-app/logistics-app
   tag: ""                   # required; CI writes the commit SHA into values-local.yaml
   pullPolicy: IfNotPresent  # tags are never reused, so a cached image is always the right one
 

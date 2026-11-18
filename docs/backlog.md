@@ -98,10 +98,12 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
   Application `argocd` → `deploy/argocd`, server-side apply, never pruned.
   Done when: changing a patch in `deploy/argocd` shows up as a diff in the UI.
 - [x] **S01-08 Build and publish images on GitHub Actions**
-  Same script as locally. On `main`, publish to `ghcr.io/ffetih/<name>:<sha>` and commit the tag into `values-local.yaml` with `[skip ci]`.
+  Same script as locally. On `main`, publish to `ghcr.io/ffetih/ff-devops-logistic-app/<name>:<sha>` and commit the tag into `values-local.yaml` with `[skip ci]`.
   Port: `.github/workflows/ci.yml`.
   Absorbs: `19ee090` (token for the registry login).
   Done when: a push to `main` produces a tag commit and Argo CD shows `logistics-app` `OutOfSync`.
+- [x] **S01-09 Publish images under the repository's name**
+  `ghcr.io/ffetih/ff-logistics-app` already belongs to the reference repository, so this repository's token got `permission_denied: write_package`. Images are now `ghcr.io/ffetih/ff-devops-logistic-app/<service>`: created by this repository's first push and linked to it.
 
 ## S2 — Progressive delivery with Argo Rollouts
 

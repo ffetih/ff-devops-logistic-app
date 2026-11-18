@@ -1,6 +1,6 @@
 # Logistics app, every environment. Overrides deploy/charts/ff-service/values.yaml.
 image:
-  repository: ghcr.io/ffetih/ff-logistics-app
+  repository: ghcr.io/ffetih/ff-devops-logistic-app/logistics-app
 
 containerPort: 8081
 

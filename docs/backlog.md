@@ -97,7 +97,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
 - [x] **S01-07 Let Argo CD manage its own installation**
   Application `argocd` → `deploy/argocd`, server-side apply, never pruned.
   Done when: changing a patch in `deploy/argocd` shows up as a diff in the UI.
-- [ ] **S01-08 Build and publish images on GitHub Actions**
+- [x] **S01-08 Build and publish images on GitHub Actions**
   Same script as locally. On `main`, publish to `ghcr.io/ffetih/<name>:<sha>` and commit the tag into `values-local.yaml` with `[skip ci]`.
   Port: `.github/workflows/ci.yml`.
   Absorbs: `19ee090` (token for the registry login).

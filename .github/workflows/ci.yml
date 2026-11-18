@@ -1,0 +1,114 @@
+# Every push and pull request: build and test with the same script as locally, and render
+# what Argo CD will render. On a push to main, after both pass, publish the images to GHCR
+# and commit the new tags into deploy/apps/*/values-local.yaml. Argo CD then shows those
+# Applications OutOfSync until someone syncs them.
+#
+# The tag commit carries [skip ci] in its message; GitHub does not start workflows for it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    name: Java build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - run: ./build-all.sh
+      # One artifact per jar, uploaded with the path the Dockerfile copies from.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ff-logistics-app-jar
+          retention-days: 1
+          if-no-files-found: error
+          path: platform/ff-logistics/ff-logistics-app/target/siose-ff-logistics-app.jar
+
+  manifests:
+    name: Render manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      # Each service the way Argo CD renders it: the shared chart, then its two values files.
+      - name: Helm lint and template
+        run: |
+          set -euo pipefail
+          for app in deploy/apps/*/; do
+            name="$(basename "$app")"
+            echo "::group::$name"
+            helm lint deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml"
+            helm template "$name" deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml" > /dev/null
+            echo "::endgroup::"
+          done
+      - name: Argo CD kustomization
+        run: kubectl kustomize deploy/argocd > /dev/null
+
+  images:
+    name: Publish images
+    needs: [java, manifests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ff-logistics-app-jar
+          path: platform/ff-logistics/ff-logistics-app/target
+      - name: Build and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          publish() {
+            image="ghcr.io/${owner}/$1:${GITHUB_SHA}"
+            # The source label links the package to this repository on GitHub.
+            docker build --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -t "$image" "$2"
+            docker push "$image"
+          }
+          publish ff-logistics-app platform/ff-logistics/ff-logistics-app
+      - name: Commit image tags
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          # Another push landed meanwhile: its own run records newer tags, this one stays out.
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "origin/main has moved past ${GITHUB_SHA}; leaving the recorded tags alone"
+            exit 0
+          fi
+          git checkout -B main
+          for app in logistics-app; do
+            yq -i ".image.tag = \"${GITHUB_SHA}\"" "deploy/apps/$app/values-local.yaml"
+          done
+          git add deploy/apps/*/values-local.yaml
+          if git diff --cached --quiet; then
+            echo "image tags already record ${GITHUB_SHA}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish image tags for ${GITHUB_SHA::7}" -m "[skip ci]"
+          git push origin HEAD:main

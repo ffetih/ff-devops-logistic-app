@@ -129,3 +129,30 @@ curl -s localhost:8081/actuator/health
 ```
 
 `logistics-app` deploys the image tag in `values-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
+
+## CI and image tags
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+```text
+java       ./build-all.sh with tests, keeps the jar
+manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
+images     main only, after both pass: build, push ghcr.io/ffetih/<name>:<commit sha>,
+           write the sha into deploy/apps/<name>/values-local.yaml, commit with [skip ci]
+```
+
+From commit to cluster:
+
+```text
+merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-logistics-app:<sha>
+                       └──► commit "Publish image tags" (values-local.yaml)
+                                      │
+                Argo CD polls Git (about every 3 minutes)
+                                      ▼
+                       logistics-app OutOfSync ──► manual sync ──► new pod
+```
+
+Before the first image push works, check two settings once:
+
+- **Settings → Actions → General → Workflow permissions**: the `images` job asks for `contents: write` and `packages: write` itself, but a repository set to read-only with no override still blocks the tag commit. If the push is refused, choose *Read and write permissions*.
+- **The GHCR package's visibility**: a new package is private. The cluster pulls without credentials, so after the first run open *Packages → ff-logistics-app → Package settings → Change visibility → Public*. Otherwise the pod stays in `ImagePullBackOff`.

@@ -30,7 +30,7 @@ package "logistics-app" {
   [caller] as caller
   [release] as release
   [standards] as standards
-  [wms (S5)] as wms
+  [wms] as wms
   [tms (S6)] as tms
   [geo (S7)] as geo
   [reporting (S9)] as reporting
@@ -50,6 +50,7 @@ reporting ..> tms : events
 | `caller` | nothing | `GET /api/v1/me`: the tenant, user and roles the app took from the token
 | `release` | nothing | The `releaseSwitch` health contributor read by the canary analysis
 | `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions (<<standards>>)
+| `wms` | `standards` | Warehouses, bin locations, inbound ASNs (<<wms>>)
 |===
 
 The base libraries (`siose-ff-base-*`) are not modules of the app; every module may use them.
@@ -133,6 +134,101 @@ For every leg of a transport chain: distance x weight x the mode's factor, in gr
 
 The factors are typical well-to-wheel averages for a practice project, not certified figures: a real carrier uses its own measured values.
 For 22 t from Istanbul by Ro-Ro to Trieste (1450 km), block train to Cologne (1050 km) and 80 km by truck, the chain emits 1606.22 kg against 3519.12 kg by road only, 54.36 % less.
+
+[[wms]]
+== Warehouse management (WMS)
+
+The WMS module knows where goods can be and what is about to arrive.
+Its tables start with `wms_`; every row carries the tenant, and Hibernate adds `tenant_id = ?` to every query, so the repositories never mention a tenant and one tenant's warehouse is, for another tenant, simply not there (`404`).
+
+[plantuml,wms-model,svg]
+----
+@startuml
+hide circle
+hide methods
+skinparam classAttributeIconSize 0
+class Warehouse {
+  {field} code (unique per tenant)
+  name
+  {field} gln : GLN-13 (unique per tenant)
+  gs1CompanyPrefix
+  countryCode, city, latitude, longitude
+  palletCapacity
+}
+class BinLocation {
+  {field} code, e.g. A02-R11-L04 (unique per warehouse)
+  kind : RACK | FLOOR | STAGING
+  palletCapacity
+}
+class Asn {
+  {field} asnNumber (unique per tenant)
+  supplierName
+  expectedArrival
+  status : EXPECTED
+  version
+}
+class AsnLine {
+  lineNumber
+  gtin : GTIN-8/12/13/14
+  skuCode
+  expectedQuantity
+  receivedQuantity
+}
+Warehouse "1" *-- "*" BinLocation
+Warehouse "1" <-- "*" Asn : delivered to
+Asn "1" *-- "1..*" AsnLine
+@enduml
+----
+
+Warehouse:: A warehouse, cross-dock or hub. Its GLN is the number partners know it by. The GLN must start with the GS1 company prefix, because a GS1 member numbers its own locations from its own prefix; the same prefix will start every pallet label printed there.
+Bin location:: One addressable place inside a warehouse. The code is what is printed on the label at the place and what a scanner reads.
+ASN (advance shipping notice):: The supplier's message that goods are on their way: EDIFACT DESADV, GS1 despatch advice. One line per GTIN, numbered from 1. The ASN and its lines are one aggregate: lines are only created and changed through the ASN, which keeps the rules in one place.
+
+=== API
+
+All endpoints need `WAREHOUSE_OPERATOR` or `TENANT_ADMIN` (<<roles>>). Errors are RFC 9457 problems; the `type` says which rule was broken.
+
+[cols="2,4,3",options="header"]
+|===
+| Request | Does | Refused with
+
+| `POST /api/v1/wms/warehouses` | Registers a warehouse; code and country are stored upper case | `400 domain-validation` (GLN check digit, prefix), `409 warehouse-code-taken`, `409 warehouse-gln-taken`
+| `GET /api/v1/wms/warehouses`, `/{id}` | The tenant's warehouses, by code | `404` for another tenant's id
+| `POST /api/v1/wms/warehouses/{id}/bins` | Adds a bin location | `409 bin-code-taken`
+| `GET /api/v1/wms/warehouses/{id}/bins` | The warehouse's bin locations, by code |
+| `POST /api/v1/wms/asns` | Records an ASN with its lines; status `EXPECTED` | `400 domain-validation` (GTIN check digit, a GTIN twice), `404` unknown warehouse, `409 asn-number-taken`
+| `GET /api/v1/wms/asns`, `/{id}` | The receiving plan: by expected arrival, then number |
+|===
+
+=== Try it on the cluster
+
+`nexus.planner` works for `ff-eu-freight` and holds `WAREHOUSE_OPERATOR` (how to get a token: `deploy/README.md`, "Calling the logistics app with a token").
+
+[source,bash]
+----
+TOKEN=$(curl -s -X POST localhost:8085/sessions -H 'Content-Type: application/json' \
+  -d '{"username":"nexus.planner","password":"fflogistics2026"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
+AUTH="Authorization: Bearer $TOKEN"
+
+WH=$(curl -s localhost:8081/api/v1/wms/warehouses -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "code": "IST-HUB-01", "name": "Istanbul Hadimkoy Hub", "gln": "8690001000103", "gs1CompanyPrefix": "8690001",
+  "countryCode": "TR", "city": "Istanbul", "latitude": 41.1025, "longitude": 28.6512, "palletCapacity": 12000}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+curl -s localhost:8081/api/v1/wms/warehouses/$WH/bins -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"code": "A01-R01-L01", "kind": "RACK", "palletCapacity": 2}'; echo
+
+curl -s localhost:8081/api/v1/wms/asns -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "asnNumber": "DESADV-4711", "warehouseId": "'$WH'", "supplierName": "Bosch Bursa", "expectedArrival": "2026-11-24",
+  "lines": [{"gtin": "8690001000011", "skuCode": "BRAKE-PAD-1", "quantity": 10}]}'; echo
+----
+
+Signed in as `geodispatch.operator` (tenant `ff-tr-distribution`), `GET /api/v1/wms/warehouses` returns `[]`, and the same warehouse id answers `404`.
+
+[[roles]]
+== Roles
+
+include::../shared/roles.adoc[]
 
 [glossary]
 == Glossary

@@ -228,8 +228,10 @@ Three pull requests:
   GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258 emissions with the road-only comparison, as pure functions. Tested against the examples in the standards (SSCC `106141411234567897`, container `CSQU3054383`). The great-circle distance stays in the reference until geo needs it (S7).
   Port: `logistics/standards` (`Iso6346ContainerValidator` is now `Iso6346ContainerCode`, `GreenLogisticsCalculator` is now `EmissionsCalculator`).
   Done when: the standards tests pass, and `ModularityTest` shows `standards` with no dependencies.
-- [ ] **S05-03 Add warehouses, bin locations and inbound ASNs**
-  Port: `logistics/wms`, `V1__wms_init.sql`.
+- [x] **S05-03 Add warehouses, bin locations and inbound ASNs**
+  The `wms` module and its first tables (`V2__wms_init.sql`): warehouses with a GLN that must carry the operator's GS1 company prefix, bin locations, and ASNs with one line per GTIN. Entities extend `TenantAwareEntity`, so the repositories never filter by tenant themselves. `FlywayMigrationTest` now starts the app on the migrated PostgreSQL with `ddl-auto: validate`.
+  Port: `logistics/wms` (warehouses only; bin locations and ASNs are new), `V1__wms_init.sql`.
+  Done when: after the sync, the PreSync hook has applied `V2`, and the walkthrough in the Logistics App Guide creates a warehouse, a bin and an ASN that another tenant cannot see.
 - [ ] **S05-04 Palletize with SSCC labels from a sequence**
 - [ ] **S05-05 Smoke-test the API as a PostSync hook**
   Replaces `test-live-apis.ps1`. A failing hook marks the sync failed.

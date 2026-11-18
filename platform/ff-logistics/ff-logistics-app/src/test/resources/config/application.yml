@@ -1,7 +1,8 @@
 # Test overrides. Spring Boot reads classpath:/application.yml (src/main/resources) first and then
 # classpath:/config/application.yml (this file), which wins where both set a value. So the tests
-# run with the real settings and change only what they need: an in-memory database, no Flyway.
-# FlywayMigrationTest runs the real migrations on PostgreSQL.
+# run with the real settings and change only what they need: an in-memory database, no Flyway,
+# and tables made by Hibernate from the entities. FlywayMigrationTest runs the real migrations on
+# PostgreSQL and checks that the entities match them.
 # Do not move this file to src/test/resources/application.yml: there it would hide the main file.
 spring:
   datasource:
@@ -9,5 +10,8 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
   flyway:
     enabled: false

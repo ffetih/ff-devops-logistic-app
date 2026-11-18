@@ -90,7 +90,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
   `deploy/charts/ff-service`: Deployment, Service, probes on Actuator, resources, security context, `enableServiceLinks: false`. The chart's `values.yaml` holds defaults; `deploy/apps/<name>/values.yaml` and `values-local.yaml` override them in that order.
   Absorbs: `a1f748a` (service links turn ports into strings).
   Done when: `helm lint` is clean and `helm template` renders.
-- [ ] **S01-06 Add an Argo CD project and the app of apps**
+- [x] **S01-06 Add an Argo CD project and the app of apps**
   `AppProject ff-logistics` limited to this repo and the `ff-logistics` namespace. Root Application `ff-root` → `deploy/argocd/apps/`, child Application `logistics-app` with Helm `valueFiles`. The root syncs on its own (it only holds Application objects); the apps it creates wait for a manual sync.
   Absorbs: `2c08413`, `a9e5782` (manual sync on the only cluster).
   Done when: `ff-root` creates `logistics-app`, a manual sync gives `Synced/Healthy` and `localhost:8081/actuator/health` is `UP`.

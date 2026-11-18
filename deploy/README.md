@@ -5,7 +5,8 @@ Git is the desired state. Argo CD, running inside the cluster, makes the cluster
 ```text
 deploy/
 ├── cluster/k3d-config.yaml   the local cluster: k3s version, host ports
-├── argocd/                   Argo CD: pinned release and local patches
+├── argocd/                   Argo CD: pinned release, local patches, root Application
+│   └── apps/                 what the root creates: AppProject, one Application per service
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml
 ```
@@ -101,3 +102,25 @@ helm template logistics-app deploy/charts/ff-service -f deploy/apps/logistics-ap
 ```
 
 The release name (`logistics-app`) names every object; in Argo CD it is the Application name.
+
+## App of apps
+
+`deploy/argocd/root.yaml` is the only Application applied by hand, and it comes with the Argo CD install (`kubectl apply -k deploy/argocd ...`). It points at `deploy/argocd/apps/` and creates everything there:
+
+```text
+ff-root  (auto sync: only Argo CD objects)
+├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
+└── Application logistics-app   manual sync: chart + apps/logistics-app values
+```
+
+After this sprint's branch is merged, re-run the install once to create the root:
+
+```bash
+kubectl apply -k deploy/argocd --server-side --force-conflicts
+argocd app list                     # ff-root Synced, logistics-app OutOfSync
+argocd app sync logistics-app
+argocd app wait logistics-app --health
+curl -s localhost:8081/actuator/health
+```
+
+`logistics-app` deploys the image tag in `values-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).

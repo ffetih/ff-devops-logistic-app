@@ -15,11 +15,17 @@ set -euo pipefail
 cd "$(dirname "$0")"
 MVN=(./mvnw -B)
 
-echo "[1/3] Base BOM and parent"
+echo "[1/4] Base BOM and parent"
 "${MVN[@]}" -q -f base/ff-base-bom/pom.xml install
 "${MVN[@]}" -q -f base/ff-base-parent/pom.xml install
 
-echo "[2/3] Platform: logistics app"
+echo "[2/4] Base libraries"
+for lib in tenant; do
+  echo "    - ff-base-$lib"
+  "${MVN[@]}" -f "base/ff-base-$lib/pom.xml" install "$@"
+done
+
+echo "[3/4] Platform: logistics app"
 "${MVN[@]}" -f platform/ff-logistics/ff-logistics-app/pom.xml install "$@"
 
-echo "[3/3] Done."
+echo "[4/4] Done."

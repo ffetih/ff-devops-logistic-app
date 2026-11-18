@@ -143,7 +143,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 
 - [x] **S03-01 Publish an image only when its service changed**
   Every push to `main` used to build a new image, so a change to values alone started a full canary. CI now compares the push with what was there before and builds a service only when its folder, `base/` or the Maven Wrapper changed. Also moves `checkout` and `setup-java` to v5 (Node 20 is deprecated on the runners).
-- [ ] **S03-02 Add the tenant library**
+- [x] **S03-02 Add the tenant library**
   Port: `base/ff-base-tenant`.
   Absorbs: `4c37ac8` (one tenant id format).
 - [ ] **S03-03 Add RFC 9457 problem responses**

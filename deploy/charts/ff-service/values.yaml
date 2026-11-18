@@ -43,6 +43,15 @@ rollout:
       interval: 10s
       count: 3              # three answers, all of them UP, or the release aborts
 
+# Schema migrations as an Argo CD PreSync hook: before the new pods start, a Job runs the
+# same image with this Spring profile, migrates and exits. The pods then run without Flyway.
+# The old version keeps serving while the hook runs, so a migration has to work for both.
+migration:
+  enabled: false
+  profile: migrate
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+
 # Extra container environment, as Kubernetes EnvVar entries (name/value or name/valueFrom)
 env: []
 

@@ -15,14 +15,20 @@ setlocal
 pushd "%~dp0"
 set MVN=call "%~dp0mvnw.cmd" -B
 
-echo [1/3] Base BOM and parent
+echo [1/4] Base BOM and parent
 %MVN% -q -f base\ff-base-bom\pom.xml install || goto failed
 %MVN% -q -f base\ff-base-parent\pom.xml install || goto failed
 
-echo [2/3] Platform: logistics app
+echo [2/4] Base libraries
+for %%L in (tenant web persistence) do (
+  echo     - ff-base-%%L
+  %MVN% -f base\ff-base-%%L\pom.xml install %* || goto failed
+)
+
+echo [3/4] Platform: logistics app
 %MVN% -f platform\ff-logistics\ff-logistics-app\pom.xml install %* || goto failed
 
-echo [3/3] Done.
+echo [4/4] Done.
 popd
 endlocal
 exit /b 0

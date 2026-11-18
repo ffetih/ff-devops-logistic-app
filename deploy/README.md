@@ -8,6 +8,7 @@ deploy/
 ├── argocd/                   Argo CD: pinned release, local patches, root Application
 │   └── apps/                 what the root creates: AppProject, one Application per service
 ├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
+├── platform/postgres/        PostgreSQL 17: Deployment, volume, local credentials, NodePort 5432
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml, image-local.yaml
 ```
@@ -115,6 +116,7 @@ ff-root  (auto sync: only Argo CD objects)
 ├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
 ├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
 ├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
+├── Application postgres        manual sync, wave -1: the database the services use
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
@@ -141,7 +143,8 @@ curl -s localhost:8081/actuator/health
 ```text
 java       ./build-all.sh with tests, keeps the jar
 manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
-images     main only, after both pass: build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
+images     main only, after both pass, for each service this push changed (its folder, base/,
+           the wrapper): build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
            write the sha into deploy/apps/<name>/image-local.yaml, commit with [skip ci]
 ```
 
@@ -155,6 +158,8 @@ merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-
                                       ▼
                        logistics-app OutOfSync ──► manual sync ──► new pod
 ```
+
+A push that changes only values, charts or docs builds no image and makes no tag commit: the running image stays, and only the changed values reach the cluster on the next sync.
 
 Before the first image push works, check two settings once:
 
@@ -240,3 +245,61 @@ kubectl -n ff-logistics get analysisrun
 ```
 
 A broken release on purpose: in `values-local.yaml` set `FF_RELEASE_HEALTHY` to `"false"`, commit, push, sync. The analysis run fails at 25 %, the rollout aborts and the canary pod goes away; users never left the stable pods. Argo CD shows `Degraded` because Git still asks for the broken release. Set it back to `"true"`, push and sync to recover.
+
+## PostgreSQL
+
+`deploy/platform/postgres` through the `postgres` Application: one PostgreSQL 17 server in the `ff-logistics` namespace, database `ff_logistics`, data on a k3s local-path volume.
+
+```bash
+argocd app sync postgres && argocd app wait postgres --health
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version()'
+```
+
+From WSL or Windows tools (IntelliJ database view, DBeaver): `localhost:5432`, database `ff_logistics`, user `fflogistics`, password `fflogisticsDb2026`. These are local-only values from `secret.yaml`.
+
+```bash
+sudo apt install -y postgresql-client     # once, for psql in WSL
+PGPASSWORD=fflogisticsDb2026 psql -h localhost -U fflogistics ff_logistics
+```
+
+The volume claim `postgres-data` is never pruned and survives deleting the Application. `k3d cluster delete` removes it with the cluster. To start over with an empty database on purpose:
+
+```bash
+kubectl -n ff-logistics scale deploy/postgres --replicas=0
+kubectl -n ff-logistics delete pvc postgres-data
+argocd app sync postgres
+```
+
+### The logistics app and its database
+
+In the cluster the app reads `LOGISTICS_DB_URL`, `LOGISTICS_DB_USERNAME` and `LOGISTICS_DB_PASSWORD` from `apps/logistics-app/values-local.yaml` (the last two from the `postgres-credentials` Secret). Flyway migrates `ff_logistics` from `src/main/resources/db/migration`.
+
+From IntelliJ, the defaults in `application.yml` already point at the cluster's database on `localhost:5432`. Host port 8081 belongs to the cluster, so give the IDE run another port:
+
+```text
+Run configuration → LogisticsApplication → Program arguments:  --server.port=18081
+```
+
+The IDE run and the pods then share one database: both see the same schema history and the same rows.
+
+### Migrations: a PreSync hook
+
+`values-local.yaml` turns on `migration.enabled`. Every sync of `logistics-app` then runs in this order:
+
+```text
+PreSync   Job logistics-app-migrate   same image, profile migrate: Flyway migrates, the process exits
+          ├── fails → the sync fails, nothing else is applied, the running version keeps serving
+          └── succeeds ↓
+Sync      Rollout, Services, ...      new pods start with SPRING_FLYWAY_ENABLED=false
+```
+
+```bash
+argocd app sync logistics-app
+kubectl -n ff-logistics get jobs
+kubectl -n ff-logistics logs job/logistics-app-migrate
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version, description, success from flyway_schema_history'
+```
+
+The Job of the last sync stays until the next one replaces it (`BeforeHookCreation`), so its log can be read afterwards. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
+
+While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).

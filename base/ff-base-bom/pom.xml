@@ -3,6 +3,7 @@
     Siose FF - Base BOM (Bill of Materials)
 
     The single source of truth for dependency VERSIONS. It contains no build configuration.
+    - Internal base libraries (released together with this BOM, same version).
     - Spring Modulith and Spring Boot BOMs; Spring Boot manages Spring, Hibernate, Jackson, JUnit, Testcontainers, ...
 
     Any Maven project can consume it, with or without siose-ff-base-parent:
@@ -44,6 +45,23 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Internal base libraries: always the BOM's own version (release train) -->
+            <dependency>
+                <groupId>com.siose.ff</groupId>
+                <artifactId>siose-ff-base-tenant</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.siose.ff</groupId>
+                <artifactId>siose-ff-base-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.siose.ff</groupId>
+                <artifactId>siose-ff-base-persistence</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- Spring Modulith: module verification, event publication registry -->
             <dependency>
                 <groupId>org.springframework.modulith</groupId>

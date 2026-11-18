@@ -1,0 +1,3 @@
+-- The first migration creates nothing. It starts Flyway's schema history on an empty database,
+-- so the migration path (Flyway in the app, then the PreSync hook) can be proven before the
+-- first module brings its tables (WMS, V2).

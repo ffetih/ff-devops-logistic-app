@@ -21,6 +21,7 @@
 // so these relative paths work from every guide (see "Working on this documentation" in the Platform Guide).
 :url-platform-guide: ../platform/platform-guide.html
 :url-identity-guide: ../identity/identity-guide.html
+:url-logistics-guide: ../logistics/logistics-guide.html
 :url-repo: https://github.com/ffetih/ff-devops-logistic-app
 :toc: left
 :toclevels: 3

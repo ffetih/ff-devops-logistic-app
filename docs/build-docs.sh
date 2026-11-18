@@ -17,7 +17,8 @@ HTML="asciidoctor -r asciidoctor-diagram --failure-level WARN"
 # docs/revisions.sh first: each guide's revision history from git, which the guides include.
 BUILD_HTML="sh docs/revisions.sh && $HTML -D $OUT docs/src/index.adoc \
  && $HTML -D $OUT/platform docs/src/platform/platform-guide.adoc \
- && $HTML -D $OUT/identity docs/src/identity/identity-guide.adoc"
+ && $HTML -D $OUT/identity docs/src/identity/identity-guide.adoc \
+ && $HTML -D $OUT/logistics docs/src/logistics/logistics-guide.adoc"
 
 echo "Building HTML ..."
 docker run --rm -v "$REPO_DIR:/documents" -w /documents "$IMAGE" sh -c "$BUILD_HTML"
@@ -26,7 +27,8 @@ if [[ "${1:-}" == "pdf" ]]; then
   echo "Building PDF ..."
   docker run --rm -v "$REPO_DIR:/documents" -w /documents "$IMAGE" \
     asciidoctor-pdf -r asciidoctor-diagram --failure-level WARN -D docs/build/pdf \
-    docs/src/platform/platform-guide.adoc docs/src/identity/identity-guide.adoc
+    docs/src/platform/platform-guide.adoc docs/src/identity/identity-guide.adoc \
+    docs/src/logistics/logistics-guide.adoc
 fi
 
 echo "Done. Open $REPO_DIR/docs/build/html/index.html"

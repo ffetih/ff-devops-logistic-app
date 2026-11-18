@@ -220,8 +220,10 @@ Three pull requests:
 - [x] **S05-00 Poll Git every minute**
   `timeout.reconciliation: 60s` (jitter 10 s) in `argocd-cm`, and `requeueAfterSeconds: 60` on the ApplicationSet's Git generator. The controller and the repo server read the value only at start, so their pod templates carry it as an annotation: the sync that changes the value restarts them.
   Done when: after `argocd app sync argocd`, a merged change turns its Application OutOfSync within about 70 seconds.
-- [ ] **S05-01 Structure the app as Spring Modulith modules**
-  `ModularityTest` with `ApplicationModules.verify()`.
+- [x] **S05-01 Structure the app as Spring Modulith modules**
+  Every top-level package is a module with a `package-info.java` that names what it may use; `caller` and `release` are the first two. `ModularityTest` runs `ApplicationModules.verify()` and writes the generated module diagrams into `target/spring-modulith-docs`. The new Logistics App Guide describes the modules and the rules.
+  Port: `ModularityTest`, the `package-info.java` files.
+  Done when: `ModularityTest` passes, and fails when a module uses another module's sub-package.
 - [ ] **S05-02 Add the standards module**
   GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258.
   Port: `logistics/standards`.

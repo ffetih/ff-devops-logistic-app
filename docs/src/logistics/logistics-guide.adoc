@@ -1,0 +1,77 @@
+= {project-name}: Logistics App Guide
+include::../_attributes.adoc[]
+// Revision of the latest change, written by docs/revisions.sh during the build (absent in a preview).
+include::../../build/revisions/logistics-guide.adoc[opts=optional]
+:doctype: book
+
+[preface]
+== About this guide
+
+`platform/ff-logistics/ff-logistics-app` is the logistics product: one deployable, built from modules that each own one part of the business.
+This guide is for developers who change it: which modules exist, what each may use, and how its parts work.
+How it is built, released and secured is in the link:{url-platform-guide}[Platform Guide]; how callers get a token is in the link:{url-identity-guide}[Identity Service Guide].
+
+[[modules]]
+== Modules
+
+The app is a modular monolith. Spring Modulith treats every top-level package under `com.siose.ff.logistics` as a module, and `ModularityTest` holds them to three rules:
+
+* *The base package is the module's API.* Other modules may use the public types in `com.siose.ff.logistics.<module>`; its sub-packages (`api`, `domain`, `service`) are internal.
+* *Dependencies are declared.* `package-info.java` lists the modules it may use in `@ApplicationModule(allowedDependencies = ...)`. Anything else fails the build.
+* *No cycles.* If two modules need each other, one of them publishes an event instead (S6).
+
+A module that keeps these rules can later move into a service of its own without untangling it from the rest: its callers already use only its API.
+
+[plantuml,logistics-modules,svg]
+----
+@startuml
+skinparam componentStyle rectangle
+package "logistics-app" {
+  [caller] as caller
+  [release] as release
+  [standards (S5)] as standards
+  [wms (S5)] as wms
+  [tms (S6)] as tms
+  [geo (S7)] as geo
+  [reporting (S9)] as reporting
+}
+wms --> standards
+tms --> standards
+geo --> standards
+reporting --> standards
+reporting ..> tms : events
+@enduml
+----
+
+[cols="1,2,3",options="header"]
+|===
+| Module | May use | Owns
+
+| `caller` | nothing | `GET /api/v1/me`: the tenant, user and roles the app took from the token
+| `release` | nothing | The `releaseSwitch` health contributor read by the canary analysis
+|===
+
+The base libraries (`siose-ff-base-*`) are not modules of the app; every module may use them.
+
+=== Checking the walls
+
+[source,bash]
+----
+cd platform/ff-logistics/ff-logistics-app
+../../../mvnw test -Dtest=ModularityTest
+----
+
+The same test writes the modules as the code has them, as PlantUML, into `target/spring-modulith-docs`: `components.puml` for the whole app and one file per module. The diagram above is the plan; the generated one is the fact.
+
+=== Adding a module
+
+. Create the package `com.siose.ff.logistics.<module>` with a `package-info.java`: a display name and the modules it may use.
+. Put what other modules may call in the base package; everything else in sub-packages.
+. Add a row to the table above, and the module to the diagram.
+
+[glossary]
+== Glossary
+
+include::../shared/glossary.adoc[]
+
+include::../../build/revisions/logistics-guide-history.adoc[opts=optional]

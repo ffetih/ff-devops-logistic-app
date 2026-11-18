@@ -56,7 +56,7 @@ app ..> ghcr : image
 |===
 | Part | Kind | Job
 
-| `logistics-app` | Spring Boot, Rollout | The logistics product. Business modules arrive sprint by sprint; today it serves `/api/v1/me` and Actuator.
+| `logistics-app` | Spring Boot, Rollout | The logistics product: Spring Modulith modules in one deployable, added sprint by sprint (link:{url-logistics-guide}[Logistics App Guide]).
 | `identity` | Spring Boot, Deployment | The only process that calls Keycloak: sign-in, JWKS, users, integration clients (link:{url-identity-guide}[Identity Service Guide]).
 | Keycloak {keycloak-version} | platform | Identity provider with the `{keycloak-realm}` realm from Git.
 | PostgreSQL 17 | platform | Database `ff_logistics`; data on a volume Argo CD never prunes.
@@ -66,7 +66,7 @@ app ..> ghcr : image
 
 === Technology stack
 
-* Java {java-version}, Spring Boot {spring-boot-version}, Spring Modulith {spring-modulith-version} (from the first module on)
+* Java {java-version}, Spring Boot {spring-boot-version}, Spring Modulith {spring-modulith-version} (the logistics app's modules)
 * Maven through the wrapper; no root `pom.xml`, every project builds on its own (<<build-platform>>)
 * k3d (k3s) in WSL, Helm for the services, Kustomize for the platform pieces
 * GitHub Actions and GitHub Container Registry
@@ -223,7 +223,8 @@ docs/
     ├── _attributes.adoc                 shared attributes (ports, versions, links between guides)
     ├── shared/                          glossary, roles matrix
     ├── platform/platform-guide.adoc     this guide
-    └── identity/identity-guide.adoc
+    ├── identity/identity-guide.adoc
+    └── logistics/logistics-guide.adoc
 ----
 
 [source,bash]

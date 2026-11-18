@@ -78,7 +78,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
 
 - [x] **S01-01 Plan Argo Rollouts as sprint 2**
   Rollouts only needs an app that runs, so it moves up from the tracing sprint while the CAPA material is fresh.
-- [ ] **S01-02 Add the argocd CLI to the deploy guide**
+- [x] **S01-02 Add the argocd CLI to the deploy guide**
 - [ ] **S01-03 Add the logistics app skeleton**
   Spring Boot app on 8081, Actuator health with probes, info with `git.properties`, virtual threads, a health test.
   Port: `platform/ff-logistics/ff-logistics-app/pom.xml`, `LogisticsApplication.java`.

@@ -41,6 +41,14 @@ k3d image import ghcr.io/ffetih/ff-logistics-app:local -c ff-logistics
 
 ## Argo CD
 
+Install the CLI in WSL, at the same version as the server:
+
+```bash
+curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/download/v3.6.1/argocd-linux-amd64
+sudo install -m 555 argocd /usr/local/bin/argocd && rm argocd
+argocd version --client
+```
+
 Install the pinned release from `deploy/argocd`:
 
 ```bash
@@ -55,6 +63,7 @@ The UI is at `http://localhost:8080` over plain HTTP (`server.insecure`, local o
 
 ```bash
 argocd admin initial-password -n argocd
+# without the CLI: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
 argocd login localhost:8080 --plaintext --username admin
 argocd account update-password
 kubectl -n argocd delete secret argocd-initial-admin-secret   # after the password is changed

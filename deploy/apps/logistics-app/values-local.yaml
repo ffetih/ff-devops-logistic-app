@@ -2,7 +2,7 @@
 image:
   # "local" is an image loaded with `k3d image import` (deploy/README.md). After the first
   # push to main, CI replaces it with the commit SHA it published.
-  tag: 8a8622ad8f6392cb586c63416c75e9ec17a7ad3d
+  tag: 74c6c0621df68c7965214021c4efc66ef993dcc0
 service:
   type: NodePort
   nodePort: 30081 # host port 8081

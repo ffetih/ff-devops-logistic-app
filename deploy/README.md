@@ -119,6 +119,7 @@ ff-root  (auto sync: only Argo CD objects)
 ├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
 ├── Application postgres        manual sync, wave -1: the database the services use
 ├── Application keycloak        manual sync, wave -1: the identity provider behind the identity service
+├── Application identity        manual sync: chart + apps/identity values (Deployment)
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
@@ -323,3 +324,29 @@ curl -s localhost:8180/realms/ff-logistics | head -c 200; echo
 | Integration clients | `integration-ff-eu-freight.northfield`, `integration-ff-tr-distribution.corvane` (client credentials) |
 
 Only the identity service calls Keycloak; the other services never see it. The realm lives in Git (`ff-logistics-realm.json`): a change there renames the generated ConfigMap, Keycloak restarts on the next sync and imports it. Dev mode keeps everything else inside the container, so users or clients created through the API are gone after a restart.
+
+## The identity service
+
+`platform/ff-identity/identity-service`, deployed with the shared chart (`apps/identity`) as a plain Deployment on host port 8085. It is the only process that calls Keycloak; the other services check tokens against its JWKS.
+
+```bash
+argocd app sync identity && argocd app wait identity --health
+curl -s localhost:8085/actuator/health; echo
+
+# sign in as a realm user: an access token and a refresh token
+curl -s -X POST localhost:8085/sessions -H 'Content-Type: application/json' \
+  -d '{"username":"nexus.planner","password":"fflogistics2026"}' | tee /tmp/session.json; echo
+
+# what the token says: the tenant and the roles
+python3 -c "import json,base64; t=json.load(open('/tmp/session.json'))['accessToken'].split('.')[1]; c=json.loads(base64.urlsafe_b64decode(t+'==')); print(c['iss'], c['tenant_id'], c['realm_access']['roles'])"
+
+curl -s localhost:8085/jwks | head -c 200; echo
+```
+
+| Endpoint | Who |
+| :--- | :--- |
+| `POST /sessions`, `/sessions/refresh`, `/logout` | anyone: sign-in with username and password, refresh, sign-out |
+| `POST /sessions/client` | a partner system with its client id and secret (client credentials) |
+| `GET /jwks` | anyone: the keys the services verify tokens with |
+| `POST /service-tokens` | a service holding the broker key |
+| `/api/v1/users`, `/api/v1/integration-clients` | `TENANT_ADMIN`, inside their own tenant only |

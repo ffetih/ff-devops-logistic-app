@@ -40,6 +40,12 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: platform/ff-logistics/ff-logistics-app/target/siose-ff-logistics-app.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ff-identity-jar
+          retention-days: 1
+          if-no-files-found: error
+          path: platform/ff-identity/identity-service/target/siose-ff-identity-service.jar
 
   manifests:
     name: Render manifests
@@ -91,6 +97,10 @@ jobs:
         with:
           name: ff-logistics-app-jar
           path: platform/ff-logistics/ff-logistics-app/target
+      - uses: actions/download-artifact@v4
+        with:
+          name: ff-identity-jar
+          path: platform/ff-identity/identity-service/target
       - name: Build and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,6 +134,7 @@ jobs:
             docker push "$image"
             echo "$1" >> "$RUNNER_TEMP/published"
           }
+          publish identity platform/ff-identity/identity-service
           publish logistics-app platform/ff-logistics/ff-logistics-app
       - name: Commit image tags
         run: |

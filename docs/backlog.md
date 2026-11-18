@@ -183,7 +183,7 @@ Three pull requests:
   The only process that calls Keycloak: sign-in, refresh, sign-out, JWKS with cache and refresh, users of one tenant, integration clients with client credentials, service tokens. `KeycloakBroker` holds all of it, so it comes as one piece. Tested against an in-process fake and, where Docker runs, against Keycloak itself with the realm file.
   Port: `platform/ff-identity/identity-service` (without tracing: S13).
   Absorbs: `c0aee29`, `648d42b`, `be1fc9d`.
-- [ ] **S04-03 Deploy the identity service**
+- [x] **S04-03 Deploy the identity service**
   Image, values for the shared chart (NodePort 8085), an Application, and CI building and publishing it.
   Done when: `curl -X POST localhost:8085/sessions` with a realm user returns an access token whose `tenant_id` is the user's tenant.
 - [ ] **S04-04 Add the security library**

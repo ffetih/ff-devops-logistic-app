@@ -22,8 +22,23 @@ rollout:
       - pause: {duration: 30s}
       - setWeight: 100
 
-# A broken release on purpose: set "false", commit, sync. The analysis fails at 25% and the
-# rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
+# Every variable in one list: Helm replaces lists, it does not merge them, so an env list in
+# another values file would drop these.
 env:
+  # The postgres Application in the same namespace (deploy/platform/postgres)
+  - name: LOGISTICS_DB_URL
+    value: jdbc:postgresql://postgres:5432/ff_logistics
+  - name: LOGISTICS_DB_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: postgres-credentials
+        key: username
+  - name: LOGISTICS_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-credentials
+        key: password
+  # A broken release on purpose: set "false", commit, sync. The analysis fails at 25% and the
+  # rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
   - name: FF_RELEASE_HEALTHY
     value: "true"

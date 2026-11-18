@@ -269,3 +269,15 @@ kubectl -n ff-logistics scale deploy/postgres --replicas=0
 kubectl -n ff-logistics delete pvc postgres-data
 argocd app sync postgres
 ```
+
+### The logistics app and its database
+
+In the cluster the app reads `LOGISTICS_DB_URL`, `LOGISTICS_DB_USERNAME` and `LOGISTICS_DB_PASSWORD` from `apps/logistics-app/values-local.yaml` (the last two from the `postgres-credentials` Secret). Flyway migrates `ff_logistics` from `src/main/resources/db/migration`.
+
+From IntelliJ, the defaults in `application.yml` already point at the cluster's database on `localhost:5432`. Host port 8081 belongs to the cluster, so give the IDE run another port:
+
+```text
+Run configuration → LogisticsApplication → Program arguments:  --server.port=18081
+```
+
+The IDE run and the pods then share one database: both see the same schema history and the same rows.

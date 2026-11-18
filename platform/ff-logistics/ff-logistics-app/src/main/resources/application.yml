@@ -7,6 +7,15 @@ spring:
   threads:
     virtual:
       enabled: true
+  # The defaults reach the cluster's PostgreSQL through NodePort 5432, so a run from the IDE
+  # needs no settings. In the cluster the chart sets LOGISTICS_DB_* from the postgres Secret.
+  datasource:
+    url: ${LOGISTICS_DB_URL:jdbc:postgresql://localhost:5432/ff_logistics}
+    username: ${LOGISTICS_DB_USERNAME:fflogistics}
+    password: ${LOGISTICS_DB_PASSWORD:fflogisticsDb2026}
+  flyway:
+    # Scripts in db/migration. Module tables carry the module's prefix (wms_, tms_, geo_, rep_).
+    enabled: true
 
 management:
   endpoints:

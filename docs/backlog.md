@@ -156,7 +156,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
   Application `postgres` in the app of apps: a StatefulSet with a volume, a Secret with local-only credentials, NodePort 5432 for runs from the IDE.
   Port: `deploy/overlays/local/platform/postgres.yaml`.
   Done when: `psql -h localhost -U fflogistics ff_logistics` answers from WSL.
-- [ ] **S03-06 Connect the logistics app to PostgreSQL with Flyway**
+- [x] **S03-06 Connect the logistics app to PostgreSQL with Flyway**
   Datasource, Flyway and a first migration that only starts the schema history. A Testcontainers test runs the migrations on PostgreSQL 17 and is skipped where Docker is missing; the other tests use H2. The IDE runs against the cluster's database on `localhost:5432`.
   Absorbs: `c3247b7`, `846888f`.
 - [ ] **S03-07 Run migrations as a PreSync hook**

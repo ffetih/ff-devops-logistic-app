@@ -1,0 +1,30 @@
+# The identity service: the shared chart with this service's values. The last values file
+# wins: image-local.yaml (written by CI) over values-local.yaml over values.yaml over the
+# chart's defaults. A plain Deployment, no Rollout: it is not released with a canary.
+#
+# Manual sync. Sync keycloak first: the service reads the realm's keys at start.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: identity
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ff-logistics
+spec:
+  project: ff-logistics
+  source:
+    repoURL: https://github.com/ffetih/ff-devops-logistic-app.git
+    targetRevision: main
+    path: deploy/charts/ff-service
+    helm:
+      releaseName: identity
+      valueFiles:
+        - ../../apps/identity/values.yaml
+        - ../../apps/identity/values-local.yaml
+        - ../../apps/identity/image-local.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ff-logistics
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

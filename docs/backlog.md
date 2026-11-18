@@ -214,7 +214,7 @@ Three pull requests:
 | PR | Items | What to try after merge and sync |
 | :--- | :--- | :--- |
 | A | S05-00 … S05-02 | A merge shows up as OutOfSync within about a minute; the new image rolls out as a canary, with no new tables |
-| B | S05-03 … S05-04 | The PreSync hook applies `V2`; warehouses, bin locations, ASNs and pallets work with a token |
+| B | S05-03 … S05-04 | The PreSync hook applies `V2` and `V3`; warehouses, bin locations, ASNs and pallets with SSCC labels work with a token |
 | C | S05-05 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer |
 
 - [x] **S05-00 Poll Git every minute**
@@ -232,7 +232,10 @@ Three pull requests:
   The `wms` module and its first tables (`V2__wms_init.sql`): warehouses with a GLN that must carry the operator's GS1 company prefix, bin locations, and ASNs with one line per GTIN. Entities extend `TenantAwareEntity`, so the repositories never filter by tenant themselves. `FlywayMigrationTest` now starts the app on the migrated PostgreSQL with `ddl-auto: validate`.
   Port: `logistics/wms` (warehouses only; bin locations and ASNs are new), `V1__wms_init.sql`.
   Done when: after the sync, the PreSync hook has applied `V2`, and the walkthrough in the Logistics App Guide creates a warehouse, a bin and an ASN that another tenant cannot see.
-- [ ] **S05-04 Palletize with SSCC labels from a sequence**
+- [x] **S05-04 Palletize with SSCC labels from a sequence**
+  One request receives one pallet: it books the quantity on the ASN line, labels the pallet with an SSCC (extension digit, the warehouse's GS1 company prefix, a serial from `wms_sscc_serial_seq`, check digit) and puts it into a bin location with room. `V3__wms_pallets.sql`. The ASN and the bin are locked for the transaction, so two scanners on the same ASN cannot receive more than was announced. The ASN moves from `EXPECTED` through `RECEIVING` to `RECEIVED`.
+  Port: the SSCC part of `WmsInventoryService` (without the inspection photo: documents come in S7).
+  Done when: after the sync, the hook has applied `V3`, and receiving the walkthrough's ASN in two pallets returns two valid SSCCs and leaves it `RECEIVED`.
 - [ ] **S05-05 Smoke-test the API as a PostSync hook**
   Replaces `test-live-apis.ps1`. A failing hook marks the sync failed.
 

@@ -41,6 +41,15 @@ public class AsnLine extends TenantAwareEntity {
         this.receivedQuantity = 0;
     }
 
+    /** Units still to come: what was announced minus what has been received. */
+    public int getOpenQuantity() {
+        return expectedQuantity - receivedQuantity;
+    }
+
+    void receive(int quantity) {
+        receivedQuantity += quantity;
+    }
+
     public UUID getId() {
         return id;
     }

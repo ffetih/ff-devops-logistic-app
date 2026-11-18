@@ -43,6 +43,11 @@ class FlywayMigrationTest {
         registry.add("spring.flyway.enabled", () -> "true");
         // The real schema, from the migrations; Hibernate only checks that the entities match it.
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("spring.sql.init.mode", () -> "never");
+        // The test config defers database initialization until Hibernate is up, for schema.sql on
+        // H2. Flyway counts as database initialization too, so it would run after Hibernate had
+        // already validated an empty schema. Here Flyway must come first, as in the cluster.
+        registry.add("spring.jpa.defer-datasource-initialization", () -> "false");
     }
 
     @AfterAll
@@ -60,6 +65,6 @@ class FlywayMigrationTest {
         List<String> versions = jdbc.queryForList(
                 "select version from flyway_schema_history where success order by installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2");
+        assertThat(versions).containsExactly("1", "2", "3");
     }
 }

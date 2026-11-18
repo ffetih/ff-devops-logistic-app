@@ -93,6 +93,36 @@ public class Asn extends TenantAwareEntity {
         lines.add(new AsnLine(lines.size() + 1, gtin, skuCode, expectedQuantity));
     }
 
+    /**
+     * Books goods for one line, as one pallet is built. The first receipt moves the ASN to
+     * {@code RECEIVING}; the one that completes the last open line moves it to {@code RECEIVED}.
+     *
+     * @return the line the goods were booked on
+     * @throws IllegalArgumentException if no line has this GTIN, or the quantity is below 1
+     * @throws WmsConflictException     if the ASN is already received, or the quantity is more than
+     *                                  the line still expects
+     */
+    public AsnLine receive(String gtin, int quantity) {
+        if (status == AsnStatus.RECEIVED) {
+            throw WmsConflictException.asnAlreadyReceived(asnNumber);
+        }
+        if (quantity < 1) {
+            throw new IllegalArgumentException("A pallet holds at least one unit");
+        }
+        AsnLine line = lines.stream()
+                .filter(candidate -> candidate.getGtin().equals(gtin))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("GTIN " + gtin + " is not on ASN " + asnNumber));
+        if (quantity > line.getOpenQuantity()) {
+            throw WmsConflictException.overReceipt(asnNumber, line.getLineNumber(), quantity, line.getOpenQuantity());
+        }
+        line.receive(quantity);
+        status = lines.stream().allMatch(candidate -> candidate.getOpenQuantity() == 0)
+                ? AsnStatus.RECEIVED
+                : AsnStatus.RECEIVING;
+        return line;
+    }
+
     public UUID getId() {
         return id;
     }

@@ -13,5 +13,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    # schema.sql (the sequences) runs after Hibernate has made the tables.
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
   flyway:
     enabled: false

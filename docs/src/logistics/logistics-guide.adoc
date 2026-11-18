@@ -164,7 +164,7 @@ class Asn {
   {field} asnNumber (unique per tenant)
   supplierName
   expectedArrival
-  status : EXPECTED
+  status : EXPECTED | RECEIVING | RECEIVED
   version
 }
 class AsnLine {
@@ -174,15 +174,24 @@ class AsnLine {
   expectedQuantity
   receivedQuantity
 }
+class Pallet {
+  {field} sscc : SSCC-18 (unique everywhere)
+  gtin, skuCode
+  quantity
+  grossWeightKg
+}
 Warehouse "1" *-- "*" BinLocation
 Warehouse "1" <-- "*" Asn : delivered to
 Asn "1" *-- "1..*" AsnLine
+Asn "1" <-- "*" Pallet : received from
+BinLocation "1" <-- "*" Pallet : stands in
 @enduml
 ----
 
 Warehouse:: A warehouse, cross-dock or hub. Its GLN is the number partners know it by. The GLN must start with the GS1 company prefix, because a GS1 member numbers its own locations from its own prefix; the same prefix will start every pallet label printed there.
 Bin location:: One addressable place inside a warehouse. The code is what is printed on the label at the place and what a scanner reads.
 ASN (advance shipping notice):: The supplier's message that goods are on their way: EDIFACT DESADV, GS1 despatch advice. One line per GTIN, numbered from 1. The ASN and its lines are one aggregate: lines are only created and changed through the ASN, which keeps the rules in one place.
+Pallet:: Goods of one ASN line, built into a pallet at receiving, labelled with an SSCC and put away into a bin location. From then on the SSCC is the pallet's identity for everyone in the chain.
 
 === API
 
@@ -198,6 +207,9 @@ All endpoints need `WAREHOUSE_OPERATOR` or `TENANT_ADMIN` (<<roles>>). Errors ar
 | `GET /api/v1/wms/warehouses/{id}/bins` | The warehouse's bin locations, by code |
 | `POST /api/v1/wms/asns` | Records an ASN with its lines; status `EXPECTED` | `400 domain-validation` (GTIN check digit, a GTIN twice), `404` unknown warehouse, `409 asn-number-taken`
 | `GET /api/v1/wms/asns`, `/{id}` | The receiving plan: by expected arrival, then number |
+| `POST /api/v1/wms/asns/{id}/pallets` | Receives one pallet: books the quantity on the GTIN's line, labels it with a new SSCC, puts it into the bin (<<receiving>>) | `400 domain-validation` (GTIN not on the ASN, bin not in its warehouse), `409 over-receipt`, `409 asn-already-received`, `409 bin-full`
+| `GET /api/v1/wms/asns/{id}/pallets` | The pallets received against an ASN, by SSCC |
+| `GET /api/v1/wms/pallets/{sscc}` | What a scanner asks when it reads a pallet label | `404` for another tenant's pallet
 |===
 
 === Try it on the cluster
@@ -223,7 +235,62 @@ curl -s localhost:8081/api/v1/wms/asns -H "$AUTH" -H 'Content-Type: application/
   "lines": [{"gtin": "8690001000011", "skuCode": "BRAKE-PAD-1", "quantity": 10}]}'; echo
 ----
 
+Receive the ASN in two pallets, 8 units and then the last 2. The answer carries the SSCC and the ASN's new status, `RECEIVING` and then `RECEIVED`:
+
+[source,bash]
+----
+ASN=$(curl -s localhost:8081/api/v1/wms/asns -H "$AUTH" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+for qty in 8 2; do
+  curl -s localhost:8081/api/v1/wms/asns/$ASN/pallets -H "$AUTH" -H 'Content-Type: application/json' \
+    -d '{"gtin": "8690001000011", "quantity": '$qty', "grossWeightKg": 412.5, "binCode": "A01-R01-L01"}'; echo
+done
+----
+
+A third pallet answers `409 asn-already-received`.
 Signed in as `geodispatch.operator` (tenant `ff-tr-distribution`), `GET /api/v1/wms/warehouses` returns `[]`, and the same warehouse id answers `404`.
+
+[[receiving]]
+=== Receiving and SSCC labels
+
+One request is one pallet, the way a receiving clerk works: scan the goods, count them onto a pallet, print the label, scan the bin.
+
+[plantuml,wms-receiving,svg]
+----
+@startuml
+start
+:lock the ASN (SELECT ... FOR UPDATE);
+:lock the bin location;
+if (bin already full?) then (yes)
+  :409 bin-full;
+  stop
+endif
+if (ASN received / GTIN not on it / more than the line still expects?) then (yes)
+  :409 or 400;
+  stop
+endif
+:book the quantity on the line;\nASN -> RECEIVING, or RECEIVED when no line is open;
+:next value of wms_sscc_serial_seq;
+:SSCC = 0 + company prefix + serial + check digit;
+:save the pallet;
+:201 with the SSCC;
+stop
+@enduml
+----
+
+[source,text]
+----
+0 8690001 000100001 0
+│ └──┬──┘ └───┬───┘ └ check digit (GS1 Modulo-10)
+│    │        └ serial reference: wms_sscc_serial_seq, 9 digits after a 7-digit prefix
+│    └ GS1 company prefix of the warehouse operator (the warehouse's gs1CompanyPrefix)
+└ extension digit: always 0 here
+----
+
+Why the serial comes from a database sequence:: An SSCC must never be issued twice, and GS1 forbids reusing one within a year of shipping the pallet. A PostgreSQL sequence hands out each value once, across restarts and across every pod of the app; a counter in memory would repeat numbers after a restart, and "highest so far plus one" would hand the same number to two requests at the same moment.
+A serial is not given back when the request fails afterwards, so the numbers can have gaps. A gap is allowed; a number used twice is not.
+
+Why the ASN is locked:: Two scanners can receive against the same ASN at once. Without a lock, both would read "2 units still open", both would book 2, and the line would show 12 of 10. `findForReceivingById` takes a row lock until the transaction ends, so the second request waits, then sees 0 open and gets `409`. The bin is locked the same way, for its last free place, and always after the ASN, so two requests can never wait for each other.
+
 
 [[roles]]
 == Roles

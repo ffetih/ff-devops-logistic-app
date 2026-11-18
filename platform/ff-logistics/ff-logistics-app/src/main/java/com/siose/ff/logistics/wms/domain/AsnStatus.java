@@ -4,5 +4,11 @@ package com.siose.ff.logistics.wms.domain;
 public enum AsnStatus {
 
     /** Announced by the supplier; nothing received yet. */
-    EXPECTED
+    EXPECTED,
+
+    /** The first pallet has been built; some lines still wait for goods. */
+    RECEIVING,
+
+    /** Every line has received what was announced. Nothing more can be received against it. */
+    RECEIVED
 }

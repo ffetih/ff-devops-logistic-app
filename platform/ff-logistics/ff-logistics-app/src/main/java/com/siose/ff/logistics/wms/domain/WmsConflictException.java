@@ -37,6 +37,21 @@ public class WmsConflictException extends ConflictException {
                 "An ASN with number " + asnNumber + " already exists");
     }
 
+    static WmsConflictException asnAlreadyReceived(String asnNumber) {
+        return new WmsConflictException("asn-already-received", "ASN Already Received",
+                "ASN " + asnNumber + " is fully received; nothing more can be booked against it");
+    }
+
+    static WmsConflictException overReceipt(String asnNumber, int lineNumber, int quantity, int open) {
+        return new WmsConflictException("over-receipt", "Over-Receipt",
+                "ASN " + asnNumber + " line " + lineNumber + " expects " + open + " more units, not " + quantity);
+    }
+
+    public static WmsConflictException binFull(String binCode, int palletCapacity) {
+        return new WmsConflictException("bin-full", "Bin Location Full",
+                "Bin location " + binCode + " already holds " + palletCapacity + " pallets");
+    }
+
     @Override
     public String problemSlug() {
         return slug;

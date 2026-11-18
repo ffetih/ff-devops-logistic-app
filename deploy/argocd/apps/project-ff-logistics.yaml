@@ -1,0 +1,21 @@
+# What the FF Logistics Applications may do: deploy from this repository only, into the
+# ff-logistics namespace only. Wave -1, so the project exists before the Applications
+# that name it.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ff-logistics
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  description: FF Logistics services on the local cluster
+  sourceRepos:
+    - https://github.com/ffetih/ff-devops-logistic-app.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: ff-logistics
+  # CreateNamespace=true needs to create the Namespace, which is cluster-scoped.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace

@@ -1,0 +1,45 @@
+# Build output
+target/
+node_modules/
+dist/
+dependency-reduced-pom.xml
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+hs_err_pid*
+replay_pid*
+
+# Image archives for k3d image import
+*.tar
+
+# Downloaded CLI binaries (kubectl plugins, argocd, k3d)
+kubectl-*
+argocd-linux-*
+k3d-linux-*
+
+# IDEs and agents
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.junie/
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.swp
+
+# Local secrets: real values never go into Git
+.env
+*.key
+
+# Generated documentation
+docs/build/

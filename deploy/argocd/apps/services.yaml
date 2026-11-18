@@ -1,0 +1,51 @@
+# One Application per folder under deploy/apps: the folder's name is the Application's name,
+# the Helm release name and the name of every object it renders. A new service is a new
+# folder with values.yaml, values-local.yaml and image-local.yaml; nothing in Argo CD changes.
+#
+# Like the hand-written Applications it replaced, a generated Application has no automated
+# sync: a merged change still waits for an operator. Generated Applications carry no resources
+# finalizer, and preserveResourcesOnDeletion keeps the workloads even if this ApplicationSet is
+# deleted: removing a service is a deliberate step, not a side effect.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ff-services
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ff-logistics
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/ffetih/ff-devops-logistic-app.git
+        revision: main
+        directories:
+          - path: deploy/apps/*
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: '{{ .path.basename }}'
+      labels:
+        app.kubernetes.io/part-of: ff-logistics
+    spec:
+      project: ff-logistics
+      source:
+        repoURL: https://github.com/ffetih/ff-devops-logistic-app.git
+        targetRevision: main
+        path: deploy/charts/ff-service
+        helm:
+          releaseName: '{{ .path.basename }}'
+          # The last file wins: image-local.yaml (written by CI) over values-local.yaml over
+          # values.yaml over the chart's defaults.
+          valueFiles:
+            - '../../apps/{{ .path.basename }}/values.yaml'
+            - '../../apps/{{ .path.basename }}/values-local.yaml'
+            - '../../apps/{{ .path.basename }}/image-local.yaml'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: ff-logistics
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true

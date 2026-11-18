@@ -128,7 +128,7 @@ Three pull requests, so each strategy can be watched on the cluster before the n
 - [x] **S02-04 Release the logistics app blue-green**
   Active Service `logistics-app` (NodePort 30081), preview Service `logistics-app-preview`, `autoPromotionEnabled: false`.
   Done when: after a sync with prune, the Deployment is gone and `kubectl argo rollouts get rollout logistics-app` shows one healthy revision.
-- [ ] **S02-05 Add a release health group that a switch can turn DOWN**
+- [x] **S02-05 Add a release health group that a switch can turn DOWN**
   `/actuator/health/release` answers 200 with `UP` or `DOWN`; `FF_RELEASE_HEALTHY=false` makes it `DOWN`. Liveness and readiness do not include it, so the pod stays Ready: the release is wrong, not the process.
   Done when: the new image waits on the preview Service, and `kubectl argo rollouts promote` switches the active Service.
 - [ ] **S02-06 Release canary with an analysis**

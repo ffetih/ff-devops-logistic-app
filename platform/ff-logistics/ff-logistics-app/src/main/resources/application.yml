@@ -20,6 +20,21 @@ management:
       # see the same endpoints.
       probes:
         enabled: true
+      group:
+        # /actuator/health/release: may this release take traffic? Read by the canary
+        # analysis. Always 200, with UP or DOWN in the body, so the analysis sees an answer
+        # rather than an error. Not part of liveness or readiness.
+        release:
+          include: releaseSwitch
+          status:
+            http-mapping:
+              down: 200
   info:
     git:
       mode: simple
+
+ff:
+  release:
+    # false (FF_RELEASE_HEALTHY=false) turns /actuator/health/release DOWN, to show what a
+    # canary analysis does with a broken release.
+    healthy: true

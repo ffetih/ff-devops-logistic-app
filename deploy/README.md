@@ -9,6 +9,7 @@ deploy/
 │   └── apps/                 what the root creates: AppProject, one Application per service
 ├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
 ├── platform/postgres/        PostgreSQL 17: Deployment, volume, local credentials, NodePort 5432
+├── platform/keycloak/        Keycloak 26: the ff-logistics realm, local credentials, NodePort 8180
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml, image-local.yaml
 ```
@@ -117,6 +118,7 @@ ff-root  (auto sync: only Argo CD objects)
 ├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
 ├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
 ├── Application postgres        manual sync, wave -1: the database the services use
+├── Application keycloak        manual sync, wave -1: the identity provider behind the identity service
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
@@ -303,3 +305,21 @@ kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logist
 The Job of the last sync stays until the next one replaces it (`BeforeHookCreation`), so its log can be read afterwards. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
 
 While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).
+
+## Keycloak
+
+`deploy/platform/keycloak` through the `keycloak` Application: Keycloak 26 in dev mode with the `ff-logistics` realm imported at start.
+
+```bash
+argocd app sync keycloak && argocd app wait keycloak --health --timeout 300
+curl -s localhost:8180/realms/ff-logistics | head -c 200; echo
+```
+
+| What | Where |
+| :--- | :--- |
+| Issuer in every token | `http://keycloak:8080/realms/ff-logistics` (the in-cluster address) |
+| Admin console | `http://localhost:8180/admin`, user `admin`, password `admin` (local only) |
+| Realm users | `nexus.planner` (tenant `ff-eu-freight`), `geodispatch.operator` (tenant `ff-tr-distribution`), password `fflogistics2026` |
+| Integration clients | `integration-ff-eu-freight.northfield`, `integration-ff-tr-distribution.corvane` (client credentials) |
+
+Only the identity service calls Keycloak; the other services never see it. The realm lives in Git (`ff-logistics-realm.json`): a change there renames the generated ConfigMap, Keycloak restarts on the next sync and imports it. Dev mode keeps everything else inside the container, so users or clients created through the API are gone after a restart.

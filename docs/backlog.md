@@ -165,25 +165,35 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 
 ## S4 — Identity
 
-Goal: users sign in through the identity service; the app trusts its tokens.
+Goal: people and partner systems sign in through the identity service, and the logistics app trusts only the tokens it issues.
 
-- [ ] **S04-01 Run Keycloak 26 with the logistics realm**
-  Realm JSON in a ConfigMap, only the realm file mounted, sync wave `0`.
-  Port: `deploy/overlays/local/platform/keycloak*`.
-  Absorbs: `f05ee5a`.
-- [ ] **S04-02 Add the identity service: sessions and JWKS**
-  Login, refresh, logout, JWKS with cache and refresh.
-  Port: `platform/ff-identity/identity-service` (`SessionController`, `JwksController`, `keycloak/*`).
-- [ ] **S04-03 Add user administration inside one tenant**
-  Absorbs: `c0aee29`, `648d42b`.
+Three pull requests:
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S04-01 … S04-03 | Keycloak runs with the realm; a user signs in through the identity service and gets a token |
+| B | S04-04 … S04-05 | The logistics app answers 401 without a token and accepts one from the identity service |
+| C | S04-06 … S04-07 | One ApplicationSet creates every service's Application; the guides build in CI |
+
+- [x] **S04-01 Run Keycloak 26 with the logistics realm**
+  Application `keycloak`: the realm and the user profile from `deploy/platform/keycloak`, imported at start. Inside the cluster only `keycloak:8080` is the issuer; the admin console is on `localhost:8180`. Dev mode keeps its data in the container, so users created through the API are gone after a restart; the realm's own users come back.
+  Port: `deploy/overlays/local/platform/keycloak*`, `infra/local/keycloak`.
+  Absorbs: `f05ee5a` (only the realm file in the import folder).
+- [ ] **S04-02 Add the identity service**
+  The only process that calls Keycloak: sign-in, refresh, sign-out, JWKS with cache and refresh, users of one tenant, integration clients with client credentials, service tokens. `KeycloakBroker` holds all of it, so it comes as one piece. Tested against an in-process fake and, where Docker runs, against Keycloak itself with the realm file.
+  Port: `platform/ff-identity/identity-service` (without tracing: S13).
+  Absorbs: `c0aee29`, `648d42b`, `be1fc9d`.
+- [ ] **S04-03 Deploy the identity service**
+  Image, values for the shared chart (NodePort 8085), an Application, and CI building and publishing it.
+  Done when: `curl -X POST localhost:8085/sessions` with a realm user returns an access token whose `tenant_id` is the user's tenant.
 - [ ] **S04-04 Add the security library**
-  JWT resource server, tenant claim converter, `local` header fallback.
+  JWT resource server against the identity service's JWKS, tenant claim into `TenantContext`, `local` header fallback.
   Port: `base/ff-base-security`.
   Absorbs: `6e9ced3` (refuse an invalid tenant claim).
-- [ ] **S04-05 Add integration clients and service tokens**
-  Absorbs: `be1fc9d`.
+- [ ] **S04-05 Protect the logistics app with tokens**
+  The app uses the security, web and tenant libraries; everything but Actuator needs a token.
 - [ ] **S04-06 Generate service Applications with an ApplicationSet**
-  Git directory generator over `deploy/apps/*`; the hand-written `logistics-app` Application goes away.
+  Git directory generator over `deploy/apps/*`; the hand-written `logistics-app` and `identity` Applications go away.
   Done when: adding a folder under `deploy/apps/` creates an Application without touching Argo CD config.
 - [ ] **S04-07 Build the documentation site in CI**
   AsciiDoc under `docs/src`, one guide per deployable, built and checked for warnings on every push.

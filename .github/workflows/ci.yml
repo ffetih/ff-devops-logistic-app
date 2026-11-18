@@ -71,6 +71,7 @@ jobs:
           kubectl kustomize deploy/argocd > /dev/null
           kubectl kustomize deploy/platform/argo-rollouts > /dev/null
           kubectl kustomize deploy/platform/postgres > /dev/null
+          kubectl kustomize deploy/platform/keycloak > /dev/null
 
   images:
     name: Publish images

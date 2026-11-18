@@ -1,5 +1,6 @@
 # The logistics app: the shared chart with this service's values. The last values file
-# wins, so values-local.yaml overrides values.yaml, which overrides the chart's defaults.
+# wins: image-local.yaml (written by CI) over values-local.yaml over values.yaml over the
+# chart's defaults.
 #
 # No automated sync. This machine has one cluster and main is the only environment a sync
 # can reach: a merged change shows as OutOfSync and waits for a manual sync.
@@ -21,6 +22,7 @@ spec:
       valueFiles:
         - ../../apps/logistics-app/values.yaml
         - ../../apps/logistics-app/values-local.yaml
+        - ../../apps/logistics-app/image-local.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: ff-logistics

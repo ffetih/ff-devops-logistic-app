@@ -9,7 +9,7 @@ deploy/
 │   └── apps/                 what the root creates: AppProject, one Application per service
 ├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
 ├── charts/ff-service/        one Helm chart for every Spring service
-└── apps/<name>/              per-service values: values.yaml, values-local.yaml
+└── apps/<name>/              per-service values: values.yaml, values-local.yaml, image-local.yaml
 ```
 
 ## Cluster
@@ -92,14 +92,16 @@ Every Spring service is the same shape: a Deployment, a NodePort or ClusterIP Se
 ```text
 charts/ff-service/values.yaml          defaults for every service
 apps/<name>/values.yaml                this service, every environment (image, port)
-apps/<name>/values-local.yaml          this service on the local cluster (NodePort, image tag)
+apps/<name>/values-local.yaml          this service on the local cluster (NodePort, rollout, env)
+apps/<name>/image-local.yaml           the image tag on the local cluster, written by CI only
 ```
 
 Render locally the way Argo CD will:
 
 ```bash
-helm lint deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
-helm template logistics-app deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
+v=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml -f deploy/apps/logistics-app/image-local.yaml)
+helm lint deploy/charts/ff-service "${v[@]}"
+helm template logistics-app deploy/charts/ff-service "${v[@]}"
 ```
 
 The release name (`logistics-app`) names every object; in Argo CD it is the Application name.
@@ -130,7 +132,7 @@ argocd app wait logistics-app --health
 curl -s localhost:8081/actuator/health
 ```
 
-`logistics-app` deploys the image tag in `values-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
+`logistics-app` deploys the image tag in `image-local.yaml`. Until CI has published one, that is `local`, so build and import it first (see Local images above).
 
 ## CI and image tags
 
@@ -140,14 +142,14 @@ curl -s localhost:8081/actuator/health
 java       ./build-all.sh with tests, keeps the jar
 manifests  helm lint + template for every deploy/apps/*, kustomize build of deploy/argocd
 images     main only, after both pass: build, push ghcr.io/ffetih/ff-devops-logistic-app/<name>:<commit sha>,
-           write the sha into deploy/apps/<name>/values-local.yaml, commit with [skip ci]
+           write the sha into deploy/apps/<name>/image-local.yaml, commit with [skip ci]
 ```
 
 From commit to cluster:
 
 ```text
 merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:<sha>
-                       └──► commit "Publish image tags" (values-local.yaml)
+                       └──► commit "Publish image tags" (image-local.yaml)
                                       │
                 Argo CD polls Git (about every 3 minutes)
                                       ▼

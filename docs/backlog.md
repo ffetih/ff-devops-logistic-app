@@ -134,6 +134,8 @@ Three pull requests, so each strategy can be watched on the cluster before the n
 - [x] **S02-06 Release canary with an analysis**
   Four replicas, steps 25% → analysis → 50% → 100%. The analysis reads `/actuator/health/release` through the canary Service three times. `FF_RELEASE_HEALTHY=false` in the values makes the release abort and scale back by itself.
   Done when: a healthy change reaches 100% without a hand on it, and a broken one aborts at 25%.
+- [x] **S02-07 Keep the CI image tag in a file of its own**
+  The bot rewrote `values-local.yaml` with `yq`, which also moved blank lines and comments, so PR C could not merge: a person and the bot had edited neighbouring lines. The tag now lives alone in `image-local.yaml`, read last, and CI rewrites that whole file. Nobody edits it by hand except to set `local`.
 
 ## S3 — Tenant, web and persistence base
 

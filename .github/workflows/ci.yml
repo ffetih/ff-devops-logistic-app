@@ -1,6 +1,6 @@
 # Every push and pull request: build and test with the same script as locally, and render
 # what Argo CD will render. On a push to main, after both pass, publish the images to GHCR
-# and commit the new tags into deploy/apps/*/values-local.yaml. Argo CD then shows those
+# and commit the new tags into deploy/apps/*/image-local.yaml. Argo CD then shows those
 # Applications OutOfSync until someone syncs them.
 #
 # The tag commit carries [skip ci] in its message; GitHub does not start workflows for it.
@@ -54,12 +54,13 @@ jobs:
           for app in deploy/apps/*/; do
             name="$(basename "$app")"
             echo "::group::$name"
-            helm lint deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml"
-            helm template "$name" deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml" > /dev/null
+            files=(-f "$app/values.yaml" -f "$app/values-local.yaml" -f "$app/image-local.yaml")
+            helm lint deploy/charts/ff-service "${files[@]}"
+            helm template "$name" deploy/charts/ff-service "${files[@]}" > /dev/null
             echo "::endgroup::"
           done
           # Every shape the chart can render, whichever one the services use today.
-          base=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml)
+          base=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml -f deploy/apps/logistics-app/image-local.yaml)
           helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=false > /dev/null
           helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=true --set rollout.strategy=canary --set rollout.canary.analysis.enabled=false > /dev/null
           helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=true --set rollout.strategy=blueGreen > /dev/null
@@ -111,10 +112,17 @@ jobs:
             exit 0
           fi
           git checkout -B main
+          # The whole file is rewritten: it holds the tag and nothing a person edits.
           for app in logistics-app; do
-            yq -i ".image.tag = \"${GITHUB_SHA}\"" "deploy/apps/$app/values-local.yaml"
+            printf '%s\n' \
+              "# Written by CI on every push to main (.github/workflows/ci.yml): the image it just" \
+              "# published. Nothing else lives here, so the bot's commit never touches a line that a" \
+              "# person edits in values-local.yaml. For an image loaded with \`k3d image import\`, set the" \
+              "# tag to \"local\" here by hand." \
+              "image:" \
+              "  tag: ${GITHUB_SHA}" > "deploy/apps/$app/image-local.yaml"
           done
-          git add deploy/apps/*/values-local.yaml
+          git add deploy/apps/*/image-local.yaml
           if git diff --cached --quiet; then
             echo "image tags already record ${GITHUB_SHA}"
             exit 0

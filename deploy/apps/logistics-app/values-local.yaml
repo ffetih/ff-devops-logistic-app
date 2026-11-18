@@ -22,6 +22,10 @@ rollout:
       - pause: {duration: 30s}
       - setWeight: 100
 
+# Flyway runs in a PreSync hook Job before each sync, not in the pods.
+migration:
+  enabled: true
+
 # Every variable in one list: Helm replaces lists, it does not merge them, so an env list in
 # another values file would drop these.
 env:

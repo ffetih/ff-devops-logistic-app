@@ -21,9 +21,16 @@ spec:
       ports:
         - name: http
           containerPort: {{ .Values.containerPort }}
-      {{- with .Values.env }}
+      {{- if or .Values.env .Values.migration.enabled }}
       env:
+        {{- with .Values.env }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.migration.enabled }}
+        # Flyway runs in the PreSync hook (job-migrate.yaml); the pods only use the schema.
+        - name: SPRING_FLYWAY_ENABLED
+          value: "false"
+        {{- end }}
       {{- end }}
       startupProbe:
         httpGet:

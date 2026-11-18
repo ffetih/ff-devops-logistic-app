@@ -281,3 +281,25 @@ Run configuration → LogisticsApplication → Program arguments:  --server.port
 ```
 
 The IDE run and the pods then share one database: both see the same schema history and the same rows.
+
+### Migrations: a PreSync hook
+
+`values-local.yaml` turns on `migration.enabled`. Every sync of `logistics-app` then runs in this order:
+
+```text
+PreSync   Job logistics-app-migrate   same image, profile migrate: Flyway migrates, the process exits
+          ├── fails → the sync fails, nothing else is applied, the running version keeps serving
+          └── succeeds ↓
+Sync      Rollout, Services, ...      new pods start with SPRING_FLYWAY_ENABLED=false
+```
+
+```bash
+argocd app sync logistics-app
+kubectl -n ff-logistics get jobs
+kubectl -n ff-logistics logs job/logistics-app-migrate
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version, description, success from flyway_schema_history'
+```
+
+The Job of the last sync stays until the next one replaces it (`BeforeHookCreation`), so its log can be read afterwards. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
+
+While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).

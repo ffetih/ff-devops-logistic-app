@@ -1,0 +1,7 @@
+# The PreSync hook Job (deploy/charts/ff-service/templates/job-migrate.yaml): no web server,
+# Flyway on. LogisticsApplication exits as soon as startup, and with it the migration, is done.
+spring:
+  main:
+    web-application-type: none
+  flyway:
+    enabled: true

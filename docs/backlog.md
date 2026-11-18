@@ -159,7 +159,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 - [x] **S03-06 Connect the logistics app to PostgreSQL with Flyway**
   Datasource, Flyway and a first migration that only starts the schema history. A Testcontainers test runs the migrations on PostgreSQL 17 and is skipped where Docker is missing; the other tests use H2. The IDE runs against the cluster's database on `localhost:5432`.
   Absorbs: `c3247b7`, `846888f`.
-- [ ] **S03-07 Run migrations as a PreSync hook**
+- [x] **S03-07 Run migrations as a PreSync hook**
   A Job with the app image in the `migrate` profile: it migrates and exits. `hook-delete-policy: BeforeHookCreation`. The pods themselves do not run Flyway. Migrations must stay compatible with the version still running: the old pods keep serving while the hook runs.
   Done when: a sync shows the hook Job complete before the Rollout starts a new revision, and `flyway_schema_history` has the row.
 

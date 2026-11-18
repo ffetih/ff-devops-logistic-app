@@ -21,6 +21,13 @@ spec:
   strategy:
     {{- if eq .Values.rollout.strategy "canary" }}
     canary:
+      {{- if .Values.rollout.canary.analysis.enabled }}
+      # Rollouts points each Service's selector at its own pods: the main Service at the
+      # stable version only, the canary Service at the new version only. Users stay on the
+      # stable version while the analysis talks to the canary alone.
+      stableService: {{ include "ff-service.name" . }}
+      canaryService: {{ include "ff-service.name" . }}-canary
+      {{- end }}
       {{- with .Values.rollout.canary.steps }}
       steps:
         {{- toYaml . | nindent 8 }}

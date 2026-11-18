@@ -6,7 +6,28 @@ image:
 service:
   type: NodePort
   nodePort: 30081 # host port 8081
-# Blue-green: a new version waits on logistics-app-preview until it is promoted.
+
+# Canary with analysis. Four pods so the weights are whole pods: 25% is one canary pod.
+replicaCount: 4
+
 rollout:
   enabled: true
-  strategy: blueGreen
+  strategy: canary
+  canary:
+    analysis:
+      enabled: true
+    steps:
+      - setWeight: 25
+      # Three reads of /actuator/health/release on the canary pod, 10 s apart
+      - analysis:
+          templates:
+            - templateName: logistics-app-release
+      - setWeight: 50
+      - pause: {duration: 30s}
+      - setWeight: 100
+
+# A broken release on purpose: set "false", commit, sync. The analysis fails at 25% and the
+# rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
+env:
+  - name: FF_RELEASE_HEALTHY
+    value: "true"

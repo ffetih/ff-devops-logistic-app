@@ -34,6 +34,14 @@ rollout:
     scaleDownDelaySeconds: 30
   canary:
     steps: []               # no steps: like a rolling update
+    # On: a <name>-canary Service and an AnalysisTemplate <name>-release, which reads the
+    # release health group through that Service. Reference it from a step:
+    #   - analysis: {templates: [{templateName: <name>-release}]}
+    analysis:
+      enabled: false
+      path: /actuator/health/release
+      interval: 10s
+      count: 3              # three answers, all of them UP, or the release aborts
 
 # Extra container environment, as Kubernetes EnvVar entries (name/value or name/valueFrom)
 env: []

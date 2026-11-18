@@ -213,3 +213,28 @@ kubectl argo rollouts abort logistics-app -n ff-logistics                   # or
 ```
 
 `abort` leaves the Rollout `Degraded` while Git still asks for the new tag. Either promote later, or revert the tag in Git and sync.
+
+### Canary with analysis: the logistics app
+
+From S02-06 on, `values-local.yaml` releases the logistics app as a canary instead. Four pods, so each weight is whole pods:
+
+```text
+setWeight 25   1 canary pod, 3 stable          users: logistics-app ──► stable only
+analysis       3 × GET /actuator/health/release on logistics-app-canary, 10 s apart
+                 all UP  ──► go on                 one DOWN ──► abort, canary to 0 pods
+setWeight 50   2 canary, 2 stable
+pause 30s
+setWeight 100  the canary becomes stable
+```
+
+Without an ingress or a service mesh there is no traffic split by percent. The weights decide how many pods run the new version; the main Service keeps users on the stable pods, and the canary Service gives the analysis the new pods alone.
+
+Switching from blue-green removes the preview Service, so that sync needs prune too:
+
+```bash
+argocd app sync logistics-app --prune
+kubectl argo rollouts get rollout logistics-app -n ff-logistics --watch
+kubectl -n ff-logistics get analysisrun
+```
+
+A broken release on purpose: in `values-local.yaml` set `FF_RELEASE_HEALTHY` to `"false"`, commit, push, sync. The analysis run fails at 25 %, the rollout aborts and the canary pod goes away; users never left the stable pods. Argo CD shows `Degraded` because Git still asks for the broken release. Set it back to `"true"`, push and sync to recover.

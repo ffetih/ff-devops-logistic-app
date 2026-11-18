@@ -29,7 +29,7 @@ skinparam componentStyle rectangle
 package "logistics-app" {
   [caller] as caller
   [release] as release
-  [standards (S5)] as standards
+  [standards] as standards
   [wms (S5)] as wms
   [tms (S6)] as tms
   [geo (S7)] as geo
@@ -49,6 +49,7 @@ reporting ..> tms : events
 
 | `caller` | nothing | `GET /api/v1/me`: the tenant, user and roles the app took from the token
 | `release` | nothing | The `releaseSwitch` health contributor read by the canary analysis
+| `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions (<<standards>>)
 |===
 
 The base libraries (`siose-ff-base-*`) are not modules of the app; every module may use them.
@@ -68,6 +69,70 @@ The same test writes the modules as the code has them, as PlantUML, into `target
 . Create the package `com.siose.ff.logistics.<module>` with a `package-info.java`: a display name and the modules it may use.
 . Put what other modules may call in the base package; everything else in sub-packages.
 . Add a row to the table above, and the module to the diagram.
+
+[[standards]]
+== Standards
+
+`com.siose.ff.logistics.standards` holds the public standards the other modules build on, as pure functions: static methods, no state, no beans, no database.
+A rule that a GS1 or ISO document defines is written once, here, and tested against the examples in that document.
+
+[cols="2,3,3",options="header"]
+|===
+| Class | Standard | Used for
+
+| `Gs1Standards` | GS1 General Specifications: Modulo-10 check digit | Warehouse and site numbers (GLN-13), trade items (GTIN), pallet labels (SSCC-18)
+| `Iso6346ContainerCode` | ISO 6346: owner code, category, serial, Modulo-11 check digit | Containers and trailers on a transport leg
+| `EmissionsCalculator`, `TransportMode` | EN 16258 (now ISO 14083) and the GLEC Framework | CO~2~e of a shipment and the saving against road only
+|===
+
+=== GS1 check digit
+
+Every GS1 key ends in the same check digit.
+From the right, the digits are weighted 3, 1, 3, 1, ...; the check digit brings the weighted sum up to the next multiple of ten.
+Starting from the right is what lets one rule serve keys of every length.
+
+[source,text]
+----
+GLN  0 6 1 4 1 4 1 0 0 0 0 1 | ?
+x    1 3 1 3 1 3 1 3 1 3 1 3      (weights from the right: 3, 1, 3, ...)
+sum  0+18+1+12+1+12+1+0+0+0+0+3 = 48   ->  next multiple of 10 is 50   ->  check digit 2
+     0614141000012
+----
+
+An SSCC is the extension digit, the GS1 company prefix, a serial reference and the check digit, 18 digits in all.
+The longer the company prefix, the fewer digits remain for the serial: a 7-digit prefix leaves 9, so one prefix numbers a billion pallets per extension digit.
+`generateSscc18` refuses a serial that does not fit rather than cutting it.
+
+=== ISO 6346 container code
+
+[source,text]
+----
+C S Q U   3 0 5 4 3 8   3
+└─owner─┘ └─serial──┘   check digit
+      └ category: U container, J detachable equipment, Z trailer or chassis
+----
+
+Each of the first ten characters gets a value (digits their own; letters from A = 10 upwards, skipping 11, 22 and 33, so L = 23 and V = 34), multiplied by 2 to the power of its position.
+The check digit is the sum modulo 11, with a remainder of 10 written as 0.
+
+=== Emissions
+
+For every leg of a transport chain: distance x weight x the mode's factor, in grams of CO~2~e per tonne-km, added up.
+`EmissionsCalculator.footprint` also returns what the same cargo would have emitted by road all the way, because that is the comparison a customer makes when it moves part of the route to rail or sea.
+
+[cols="2,1",options="header"]
+|===
+| `TransportMode` | g CO~2~e per tonne-km
+
+| `ROAD` | 62
+| `RAIL` | 22
+| `SEA_RORO` | 31
+| `INLAND_WATERWAY` | 28
+| `AIR` | 602
+|===
+
+The factors are typical well-to-wheel averages for a practice project, not certified figures: a real carrier uses its own measured values.
+For 22 t from Istanbul by Ro-Ro to Trieste (1450 km), block train to Cologne (1050 km) and 80 km by truck, the chain emits 1606.22 kg against 3519.12 kg by road only, 54.36 % less.
 
 [glossary]
 == Glossary

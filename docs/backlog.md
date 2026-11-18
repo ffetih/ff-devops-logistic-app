@@ -224,9 +224,10 @@ Three pull requests:
   Every top-level package is a module with a `package-info.java` that names what it may use; `caller` and `release` are the first two. `ModularityTest` runs `ApplicationModules.verify()` and writes the generated module diagrams into `target/spring-modulith-docs`. The new Logistics App Guide describes the modules and the rules.
   Port: `ModularityTest`, the `package-info.java` files.
   Done when: `ModularityTest` passes, and fails when a module uses another module's sub-package.
-- [ ] **S05-02 Add the standards module**
-  GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258.
-  Port: `logistics/standards`.
+- [x] **S05-02 Add the standards module**
+  GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258 emissions with the road-only comparison, as pure functions. Tested against the examples in the standards (SSCC `106141411234567897`, container `CSQU3054383`). The great-circle distance stays in the reference until geo needs it (S7).
+  Port: `logistics/standards` (`Iso6346ContainerValidator` is now `Iso6346ContainerCode`, `GreenLogisticsCalculator` is now `EmissionsCalculator`).
+  Done when: the standards tests pass, and `ModularityTest` shows `standards` with no dependencies.
 - [ ] **S05-03 Add warehouses, bin locations and inbound ASNs**
   Port: `logistics/wms`, `V1__wms_init.sql`.
 - [ ] **S05-04 Palletize with SSCC labels from a sequence**

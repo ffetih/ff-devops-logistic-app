@@ -62,6 +62,7 @@ jobs:
           base=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml)
           helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=false > /dev/null
           helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=true --set rollout.strategy=canary > /dev/null
+          helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=true --set rollout.strategy=blueGreen > /dev/null
       - name: Kustomizations
         run: |
           set -euo pipefail

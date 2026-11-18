@@ -25,8 +25,13 @@ service:
 # turning it on changes how new versions arrive, not what runs.
 rollout:
   enabled: false
-  strategy: canary          # canary
+  strategy: canary          # canary | blueGreen
   progressDeadlineSeconds: 300
+  blueGreen:
+    # false: a new version waits on the preview Service until someone promotes it
+    autoPromotionEnabled: false
+    # The old pods stay this long after the switch, so going back needs no new pods
+    scaleDownDelaySeconds: 30
   canary:
     steps: []               # no steps: like a rolling update
 

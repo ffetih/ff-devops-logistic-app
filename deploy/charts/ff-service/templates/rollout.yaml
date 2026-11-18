@@ -28,6 +28,14 @@ spec:
       # No steps: pods are replaced like a rolling update.
       {}
       {{- end }}
+    {{- else if eq .Values.rollout.strategy "blueGreen" }}
+    # The new version starts next to the old one and is reachable on the preview Service
+    # only. Promotion switches the active Service to it in one step.
+    blueGreen:
+      activeService: {{ include "ff-service.name" . }}
+      previewService: {{ include "ff-service.name" . }}-preview
+      autoPromotionEnabled: {{ .Values.rollout.blueGreen.autoPromotionEnabled }}
+      scaleDownDelaySeconds: {{ .Values.rollout.blueGreen.scaleDownDelaySeconds }}
     {{- else }}
     {{- fail (printf "rollout.strategy %q is not supported" .Values.rollout.strategy) }}
     {{- end }}

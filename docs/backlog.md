@@ -125,7 +125,7 @@ Three pull requests, so each strategy can be watched on the cluster before the n
 - [x] **S02-03 Let the chart render a Rollout instead of a Deployment**
   Chart option `rollout.enabled`; the Rollout keeps the same pod template, probes and Service. Off by default.
   Done when: CI renders both shapes.
-- [ ] **S02-04 Release the logistics app blue-green**
+- [x] **S02-04 Release the logistics app blue-green**
   Active Service `logistics-app` (NodePort 30081), preview Service `logistics-app-preview`, `autoPromotionEnabled: false`.
   Done when: after a sync with prune, the Deployment is gone and `kubectl argo rollouts get rollout logistics-app` shows one healthy revision.
 - [ ] **S02-05 Add a release health group that a switch can turn DOWN**

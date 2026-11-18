@@ -182,3 +182,34 @@ Watch a rollout live, or open the dashboard on `http://localhost:3100`:
 kubectl argo rollouts get rollout logistics-app -n ff-logistics --watch
 kubectl argo rollouts dashboard
 ```
+
+### Blue-green: the logistics app
+
+`apps/logistics-app/values-local.yaml` turns the Rollout on with `strategy: blueGreen`. Two Services, and Argo Rollouts moves their selectors:
+
+```text
+                      before promote                       after promote
+logistics-app         ──► blue  (old, NodePort 8081)        ──► green (new)
+logistics-app-preview ──► green (new, inside the cluster)   ──► green
+                                                             blue stays 30 s, then scales to 0
+```
+
+The first sync after the switch from Deployment to Rollout needs prune, so the old Deployment goes; until then both serve the same Service:
+
+```bash
+argocd app sync argo-rollouts && argocd app wait argo-rollouts --health
+argocd app sync logistics-app --prune
+kubectl argo rollouts get rollout logistics-app -n ff-logistics
+```
+
+The first revision has nothing to replace and goes live at once. Each later image tag waits on the preview Service; Argo CD shows the app `Suspended` meanwhile:
+
+```bash
+kubectl -n ff-logistics port-forward svc/logistics-app-preview 18081:8081   # second terminal
+curl -s localhost:18081/actuator/info                                       # the new commit
+curl -s localhost:8081/actuator/info                                        # still the old one
+kubectl argo rollouts promote logistics-app -n ff-logistics                 # switch
+kubectl argo rollouts abort logistics-app -n ff-logistics                   # or: drop the new version
+```
+
+`abort` leaves the Rollout `Degraded` while Git still asks for the new tag. Either promote later, or revert the tag in Git and sync.

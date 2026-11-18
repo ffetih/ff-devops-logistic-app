@@ -146,7 +146,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 - [x] **S03-02 Add the tenant library**
   Port: `base/ff-base-tenant`.
   Absorbs: `4c37ac8` (one tenant id format).
-- [ ] **S03-03 Add RFC 9457 problem responses**
+- [x] **S03-03 Add RFC 9457 problem responses**
   Port: `base/ff-base-web`.
   Absorbs: `42db7f4` (one 503 handler for missing dependencies).
 - [ ] **S03-04 Add tenant-aware persistence**

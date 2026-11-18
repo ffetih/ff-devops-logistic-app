@@ -20,7 +20,7 @@ echo [1/4] Base BOM and parent
 %MVN% -q -f base\ff-base-parent\pom.xml install || goto failed
 
 echo [2/4] Base libraries
-for %%L in (tenant) do (
+for %%L in (tenant web) do (
   echo     - ff-base-%%L
   %MVN% -f base\ff-base-%%L\pom.xml install %* || goto failed
 )

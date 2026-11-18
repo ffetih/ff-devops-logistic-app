@@ -86,7 +86,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
   Java 25 JRE, non-root user. Local path: build in WSL, `k3d image import`.
   Port: `ff-logistics-app/Dockerfile`, `.dockerignore`.
   Done when: the image runs and answers `/actuator/health`.
-- [ ] **S01-05 Add a shared Helm chart for Spring services**
+- [x] **S01-05 Add a shared Helm chart for Spring services**
   `deploy/charts/ff-service`: Deployment, Service, probes on Actuator, resources, security context, `enableServiceLinks: false`. The chart's `values.yaml` holds defaults; `deploy/apps/<name>/values.yaml` and `values-local.yaml` override them in that order.
   Absorbs: `a1f748a` (service links turn ports into strings).
   Done when: `helm lint` is clean and `helm template` renders.

@@ -1,0 +1,59 @@
+# Defaults for every FF service. Per service, deploy/apps/<name>/values.yaml overrides these,
+# and deploy/apps/<name>/values-local.yaml overrides both (Helm: the last values file wins).
+#
+# The release name (in Argo CD: the Application name) is the name of the Deployment, the
+# Service and the container.
+
+image:
+  repository: ""            # required, e.g. ghcr.io/ffetih/ff-logistics-app
+  tag: ""                   # required; CI writes the commit SHA into values-local.yaml
+  pullPolicy: IfNotPresent  # tags are never reused, so a cached image is always the right one
+
+imagePullSecrets: []        # only needed while the GHCR package is private
+
+replicaCount: 1
+revisionHistoryLimit: 2
+
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 8080
+  nodePort: null            # with type NodePort: a fixed port, published on the host by k3d
+
+# Extra container environment, as Kubernetes EnvVar entries (name/value or name/valueFrom)
+env: []
+
+probes:
+  liveness: /actuator/health/liveness
+  readiness: /actuator/health/readiness
+  # A JVM service needs time to start. The startup probe holds the other two back until the
+  # app answers, so a slow start is not mistaken for a hung process: 5 s x 36 = 3 minutes.
+  startup:
+    periodSeconds: 5
+    failureThreshold: 36
+  readinessPeriodSeconds: 10
+  livenessPeriodSeconds: 20
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 768Mi
+
+# Same as the Dockerfile's USER. The root filesystem is read-only; /tmp is an emptyDir,
+# because Tomcat writes its work files there.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

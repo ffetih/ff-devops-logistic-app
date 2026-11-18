@@ -5,7 +5,9 @@ Git is the desired state. Argo CD, running inside the cluster, makes the cluster
 ```text
 deploy/
 ├── cluster/k3d-config.yaml   the local cluster: k3s version, host ports
-└── argocd/                   Argo CD: pinned release and local patches
+├── argocd/                   Argo CD: pinned release and local patches
+├── charts/ff-service/        one Helm chart for every Spring service
+└── apps/<name>/              per-service values: values.yaml, values-local.yaml
 ```
 
 ## Cluster
@@ -80,3 +82,22 @@ Local patches on top of the release:
 | `argocd-cmd-params-cm` | `server.insecure: "true"`, no self-signed HTTPS redirect on localhost |
 | `argocd-server` Service | NodePort 30080, published by k3d on host port 8080 |
 | `argocd-dex-server` | 0 replicas: only the local admin account signs in, so SSO is not needed |
+
+## Helm chart and values
+
+Every Spring service is the same shape: a Deployment, a NodePort or ClusterIP Service, Actuator probes, a non-root read-only container. So there is one chart, `charts/ff-service`, and each service only brings values. Three files, later ones win:
+
+```text
+charts/ff-service/values.yaml          defaults for every service
+apps/<name>/values.yaml                this service, every environment (image, port)
+apps/<name>/values-local.yaml          this service on the local cluster (NodePort, image tag)
+```
+
+Render locally the way Argo CD will:
+
+```bash
+helm lint deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
+helm template logistics-app deploy/charts/ff-service -f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml
+```
+
+The release name (`logistics-app`) names every object; in Argo CD it is the Application name.

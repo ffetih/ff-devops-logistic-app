@@ -179,7 +179,7 @@ Three pull requests:
   Application `keycloak`: the realm and the user profile from `deploy/platform/keycloak`, imported at start. Inside the cluster only `keycloak:8080` is the issuer; the admin console is on `localhost:8180`. Dev mode keeps its data in the container, so users created through the API are gone after a restart; the realm's own users come back.
   Port: `deploy/overlays/local/platform/keycloak*`, `infra/local/keycloak`.
   Absorbs: `f05ee5a` (only the realm file in the import folder).
-- [ ] **S04-02 Add the identity service**
+- [x] **S04-02 Add the identity service**
   The only process that calls Keycloak: sign-in, refresh, sign-out, JWKS with cache and refresh, users of one tenant, integration clients with client credentials, service tokens. `KeycloakBroker` holds all of it, so it comes as one piece. Tested against an in-process fake and, where Docker runs, against Keycloak itself with the realm file.
   Port: `platform/ff-identity/identity-service` (without tracing: S13).
   Absorbs: `c0aee29`, `648d42b`, `be1fc9d`.

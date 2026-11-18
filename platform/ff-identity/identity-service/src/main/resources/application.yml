@@ -1,0 +1,40 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: identity-service
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+  jackson:
+    deserialization:
+      # Security API: a request with a field we do not define (for example "tenantId") is
+      # rejected with 400 instead of being silently ignored.
+      fail-on-unknown-properties: true
+
+identity:
+  broker-key: ${IDENTITY_BROKER_KEY:ff-identity-broker-dev}
+  keycloak:
+    base-url: ${IDENTITY_KEYCLOAK_BASE_URL:http://keycloak:8080}
+    issuer: ${IDENTITY_KEYCLOAK_ISSUER:http://keycloak:8080/realms/ff-logistics}
+    realm: ff-logistics
+    api-client-id: ff-logistics-api
+    audience: ff-logistics-api
+    service-client-id: ff-logistics-service
+    service-client-secret: ${IDENTITY_KEYCLOAK_SERVICE_CLIENT_SECRET:ff-logistics-service-secret}
+    admin-username: ${IDENTITY_KEYCLOAK_ADMIN_USERNAME:admin}
+    admin-password: ${IDENTITY_KEYCLOAK_ADMIN_PASSWORD:admin}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -25,7 +25,8 @@ for %%L in (tenant web persistence) do (
   %MVN% -f base\ff-base-%%L\pom.xml install %* || goto failed
 )
 
-echo [3/4] Platform: logistics app
+echo [3/4] Platform: identity service, logistics app
+%MVN% -f platform\ff-identity\identity-service\pom.xml install %* || goto failed
 %MVN% -f platform\ff-logistics\ff-logistics-app\pom.xml install %* || goto failed
 
 echo [4/4] Done.

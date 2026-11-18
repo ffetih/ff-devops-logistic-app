@@ -190,7 +190,7 @@ Three pull requests:
 - [x] **S04-04 Give Keycloak one address for browsers and tokens**
   With `--hostname=http://keycloak:8080` the admin console loaded, but its sign-in sent the browser to `keycloak:8080`, a name that exists only inside the cluster ("Timeout when waiting for 3rd party check iframe message"). Keycloak's public address is now `http://localhost:8180` for pages, redirects and the token issuer; `--hostname-backchannel-dynamic` keeps the identity service's calls on `keycloak:8080`.
   Done when: `http://localhost:8180/admin` signs in, and a token from `POST /sessions` has `iss: http://localhost:8180/realms/ff-logistics`.
-- [ ] **S04-05 Add the security library**
+- [x] **S04-05 Add the security library**
   JWT resource server against the identity service's JWKS, tenant claim into `TenantContext`, `local` header fallback.
   Port: `base/ff-base-security`.
   Absorbs: `6e9ced3` (refuse an invalid tenant claim).

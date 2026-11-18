@@ -94,7 +94,7 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
   `AppProject ff-logistics` limited to this repo and the `ff-logistics` namespace. Root Application `ff-root` → `deploy/argocd/apps/`, child Application `logistics-app` with Helm `valueFiles`. The root syncs on its own (it only holds Application objects); the apps it creates wait for a manual sync.
   Absorbs: `2c08413`, `a9e5782` (manual sync on the only cluster).
   Done when: `ff-root` creates `logistics-app`, a manual sync gives `Synced/Healthy` and `localhost:8081/actuator/health` is `UP`.
-- [ ] **S01-07 Let Argo CD manage its own installation**
+- [x] **S01-07 Let Argo CD manage its own installation**
   Application `argocd` → `deploy/argocd`, server-side apply, never pruned.
   Done when: changing a patch in `deploy/argocd` shows up as a diff in the UI.
 - [ ] **S01-08 Build and publish images on GitHub Actions**

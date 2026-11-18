@@ -110,8 +110,13 @@ The release name (`logistics-app`) names every object; in Argo CD it is the Appl
 ```text
 ff-root  (auto sync: only Argo CD objects)
 ├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
+├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
+
+### Argo CD manages itself
+
+The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. After the first install it should show `Synced`; a diff there means the cluster and Git disagree about Argo CD itself.
 
 After this sprint's branch is merged, re-run the install once to create the root:
 

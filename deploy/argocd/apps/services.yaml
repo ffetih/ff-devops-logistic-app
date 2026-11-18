@@ -22,6 +22,8 @@ spec:
         revision: main
         directories:
           - path: deploy/apps/*
+        # The generator has its own poll, 180 s by default; in step with argocd-cm.
+        requeueAfterSeconds: 60
   syncPolicy:
     preserveResourcesOnDeletion: true
   template:

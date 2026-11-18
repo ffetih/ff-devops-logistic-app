@@ -207,6 +207,19 @@ Three pull requests:
 
 ## S5 — Logistics core: standards and WMS
 
+Goal: the logistics app gets its first business logic and its first tables, inside module walls that a test enforces, and every sync ends with a smoke test of the live API.
+
+Three pull requests:
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S05-00 … S05-02 | A merge shows up as OutOfSync within about a minute; the new image rolls out as a canary, with no new tables |
+| B | S05-03 … S05-04 | The PreSync hook applies `V2`; warehouses, bin locations, ASNs and pallets work with a token |
+| C | S05-05 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer |
+
+- [x] **S05-00 Poll Git every minute**
+  `timeout.reconciliation: 60s` (jitter 10 s) in `argocd-cm`, and `requeueAfterSeconds: 60` on the ApplicationSet's Git generator. The controller and the repo server read the value only at start, so their pod templates carry it as an annotation: the sync that changes the value restarts them.
+  Done when: after `argocd app sync argocd`, a merged change turns its Application OutOfSync within about 70 seconds.
 - [ ] **S05-01 Structure the app as Spring Modulith modules**
   `ModularityTest` with `ApplicationModules.verify()`.
 - [ ] **S05-02 Add the standards module**

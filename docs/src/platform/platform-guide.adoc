@@ -94,7 +94,7 @@ start
 :merge to main;
 :CI: publish an image for each service\nthe push changed (its folder, base/, the wrapper);
 :CI: commit the new tag into\ndeploy/apps/<service>/image-local.yaml [skip ci];
-:Argo CD polls Git: Application OutOfSync;
+:Argo CD polls Git (every minute):\nApplication OutOfSync;
 :operator syncs;
 :PreSync hook: Flyway migrates;
 :Rollout: 25 % → analysis → 50 % → 100 %;

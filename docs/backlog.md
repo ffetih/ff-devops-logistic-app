@@ -109,19 +109,31 @@ Goal: a commit to `main` reaches the cluster through CI, an image and Argo CD, b
 
 Goal: a new version of the logistics app reaches users only after it proves itself, and goes back on its own when it does not.
 
-- [ ] **S02-01 Install Argo Rollouts through Argo CD**
-  Pinned controller release through a kustomization, an Application in the app of apps. The `kubectl argo rollouts` plugin and its dashboard go into the deploy guide.
-- [ ] **S02-02 Render a Rollout instead of a Deployment**
-  Chart option `rollout.enabled`; the Rollout keeps the same pod template, probes and Service.
-  Done when: Argo CD shows the Rollout `Healthy` and `kubectl argo rollouts get rollout logistics-app` lists one revision.
-- [ ] **S02-03 Release blue-green with a preview Service**
-  Active and preview Services, `autoPromotionEnabled: false`.
-  Done when: a new tag runs on the preview Service next to the old one, and `promote` switches the active Service.
-- [ ] **S02-04 Add a switch that makes the health check fail**
-  A property that turns readiness `DOWN`, so a broken release can be shown on purpose.
-- [ ] **S02-05 Release canary with an analysis**
-  Steps 20% → 50% → 100% with an `AnalysisTemplate` (web metric on Actuator health). A release with the failing switch aborts and scales back by itself.
-  Done when: a good tag reaches 100% without a hand on it, a bad tag aborts at 20%.
+Three pull requests, so each strategy can be watched on the cluster before the next one replaces it:
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S02-01 … S02-04 | Rollouts installed, the app runs as a blue-green Rollout |
+| B | S02-05 | A new image arrives on the preview Service, promote it by hand |
+| C | S02-06 | Canary with analysis: a healthy release goes through, a broken one aborts |
+
+- [x] **S02-01 Note how Argo CD adopted its own installation**
+  The first diff of the `argocd` Application was only `argocd.argoproj.io/tracking-id` on every object, because `kubectl apply` does not set it. One sync adds it; from then on Argo CD is upgraded through Git only.
+- [x] **S02-02 Install Argo Rollouts through Argo CD**
+  Pinned controller release through a kustomization, an Application in the app of apps, server-side apply for the CRDs. The `kubectl argo rollouts` plugin and its dashboard go into the deploy guide.
+  Done when: `argo-rollouts` is `Synced/Healthy` and `kubectl argo rollouts version` shows the same version as the controller.
+- [x] **S02-03 Let the chart render a Rollout instead of a Deployment**
+  Chart option `rollout.enabled`; the Rollout keeps the same pod template, probes and Service. Off by default.
+  Done when: CI renders both shapes.
+- [x] **S02-04 Release the logistics app blue-green**
+  Active Service `logistics-app` (NodePort 30081), preview Service `logistics-app-preview`, `autoPromotionEnabled: false`.
+  Done when: after a sync with prune, the Deployment is gone and `kubectl argo rollouts get rollout logistics-app` shows one healthy revision.
+- [ ] **S02-05 Add a release health group that a switch can turn DOWN**
+  `/actuator/health/release` answers 200 with `UP` or `DOWN`; `FF_RELEASE_HEALTHY=false` makes it `DOWN`. Liveness and readiness do not include it, so the pod stays Ready: the release is wrong, not the process.
+  Done when: the new image waits on the preview Service, and `kubectl argo rollouts promote` switches the active Service.
+- [ ] **S02-06 Release canary with an analysis**
+  Four replicas, steps 25% → analysis → 50% → 100%. The analysis reads `/actuator/health/release` through the canary Service three times. `FF_RELEASE_HEALTHY=false` in the values makes the release abort and scale back by itself.
+  Done when: a healthy change reaches 100% without a hand on it, and a broken one aborts at 25%.
 
 ## S3 — Tenant, web and persistence base
 

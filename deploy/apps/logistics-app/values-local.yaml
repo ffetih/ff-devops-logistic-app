@@ -6,3 +6,8 @@ image:
 service:
   type: NodePort
   nodePort: 30081 # host port 8081
+
+# Blue-green: a new version waits on logistics-app-preview until it is promoted.
+rollout:
+  enabled: true
+  strategy: blueGreen

@@ -7,6 +7,7 @@ deploy/
 ├── cluster/k3d-config.yaml   the local cluster: k3s version, host ports
 ├── argocd/                   Argo CD: pinned release, local patches, root Application
 │   └── apps/                 what the root creates: AppProject, one Application per service
+├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml
 ```
@@ -111,12 +112,13 @@ The release name (`logistics-app`) names every object; in Argo CD it is the Appl
 ff-root  (auto sync: only Argo CD objects)
 ├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
 ├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
+├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
 ### Argo CD manages itself
 
-The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. After the first install it should show `Synced`; a diff there means the cluster and Git disagree about Argo CD itself.
+The `argocd` Application points at `deploy/argocd`, the same folder the first install came from. An upgrade is a pull request that changes the version in `deploy/argocd/kustomization.yaml`; after merge, sync `argocd` in the UI and review the diff first. Every object in that folder is annotated `Prune=false`, so even a sync with prune selected cannot remove Argo CD. Right after the first install the `argocd` Application shows `OutOfSync` on every object. The only difference is the `argocd.argoproj.io/tracking-id` annotation: Argo CD marks the objects it owns with it, and `kubectl apply` does not know about it. One manual sync adds the annotation and changes nothing else; Argo CD has then adopted its own installation. From there on, do not run `kubectl apply -k deploy/argocd` again: upgrades go through Git and a sync, and any later diff means the cluster and Git disagree about Argo CD itself.
 
 After this sprint's branch is merged, re-run the install once to create the root:
 
@@ -156,3 +158,58 @@ Before the first image push works, check two settings once:
 
 - **Settings → Actions → General → Workflow permissions**: the `images` job asks for `contents: write` and `packages: write` itself, but a repository set to read-only with no override still blocks the tag commit. If the push is refused, choose *Read and write permissions*.
 - **The GHCR package's visibility**: a new package is private. The cluster pulls without credentials, so after the first run open *Packages → ff-devops-logistic-app/logistics-app → Package settings → Change visibility → Public*. Otherwise the pod stays in `ImagePullBackOff`.
+
+## Argo Rollouts
+
+The controller comes from `deploy/platform/argo-rollouts` through the `argo-rollouts` Application. Sync it before the first Rollout reaches the cluster:
+
+```bash
+argocd app sync argo-rollouts && argocd app wait argo-rollouts --health
+kubectl -n argo-rollouts get pods
+```
+
+The kubectl plugin talks to the same controller from WSL. Same version as the controller:
+
+```bash
+curl -sSL -o kubectl-argo-rollouts https://github.com/argoproj/argo-rollouts/releases/download/v1.10.2/kubectl-argo-rollouts-linux-amd64
+sudo install -m 555 kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts && rm kubectl-argo-rollouts
+kubectl argo rollouts version
+```
+
+Watch a rollout live, or open the dashboard on `http://localhost:3100`:
+
+```bash
+kubectl argo rollouts get rollout logistics-app -n ff-logistics --watch
+kubectl argo rollouts dashboard
+```
+
+### Blue-green: the logistics app
+
+`apps/logistics-app/values-local.yaml` turns the Rollout on with `strategy: blueGreen`. Two Services, and Argo Rollouts moves their selectors:
+
+```text
+                      before promote                       after promote
+logistics-app         ──► blue  (old, NodePort 8081)        ──► green (new)
+logistics-app-preview ──► green (new, inside the cluster)   ──► green
+                                                             blue stays 30 s, then scales to 0
+```
+
+The first sync after the switch from Deployment to Rollout needs prune, so the old Deployment goes; until then both serve the same Service:
+
+```bash
+argocd app sync argo-rollouts && argocd app wait argo-rollouts --health
+argocd app sync logistics-app --prune
+kubectl argo rollouts get rollout logistics-app -n ff-logistics
+```
+
+The first revision has nothing to replace and goes live at once. Each later image tag waits on the preview Service; Argo CD shows the app `Suspended` meanwhile:
+
+```bash
+kubectl -n ff-logistics port-forward svc/logistics-app-preview 18081:8081   # second terminal
+curl -s localhost:18081/actuator/info                                       # the new commit
+curl -s localhost:8081/actuator/info                                        # still the old one
+kubectl argo rollouts promote logistics-app -n ff-logistics                 # switch
+kubectl argo rollouts abort logistics-app -n ff-logistics                   # or: drop the new version
+```
+
+`abort` leaves the Rollout `Degraded` while Git still asks for the new tag. Either promote later, or revert the tag in Git and sync.

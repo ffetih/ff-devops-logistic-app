@@ -207,11 +207,27 @@ Three pull requests:
 
 ## S5 — Logistics core: standards and WMS
 
-- [ ] **S05-01 Structure the app as Spring Modulith modules**
-  `ModularityTest` with `ApplicationModules.verify()`.
-- [ ] **S05-02 Add the standards module**
-  GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258.
-  Port: `logistics/standards`.
+Goal: the logistics app gets its first business logic and its first tables, inside module walls that a test enforces, and every sync ends with a smoke test of the live API.
+
+Three pull requests:
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S05-00 … S05-02 | A merge shows up as OutOfSync within about a minute; the new image rolls out as a canary, with no new tables |
+| B | S05-03 … S05-04 | The PreSync hook applies `V2`; warehouses, bin locations, ASNs and pallets work with a token |
+| C | S05-05 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer |
+
+- [x] **S05-00 Poll Git every minute**
+  `timeout.reconciliation: 60s` (jitter 10 s) in `argocd-cm`, and `requeueAfterSeconds: 60` on the ApplicationSet's Git generator. The controller and the repo server read the value only at start, so their pod templates carry it as an annotation: the sync that changes the value restarts them.
+  Done when: after `argocd app sync argocd`, a merged change turns its Application OutOfSync within about 70 seconds.
+- [x] **S05-01 Structure the app as Spring Modulith modules**
+  Every top-level package is a module with a `package-info.java` that names what it may use; `caller` and `release` are the first two. `ModularityTest` runs `ApplicationModules.verify()` and writes the generated module diagrams into `target/spring-modulith-docs`. The new Logistics App Guide describes the modules and the rules.
+  Port: `ModularityTest`, the `package-info.java` files.
+  Done when: `ModularityTest` passes, and fails when a module uses another module's sub-package.
+- [x] **S05-02 Add the standards module**
+  GS1 Modulo-10 (GLN, GTIN, SSCC), ISO 6346 Modulo-11, EN 16258 emissions with the road-only comparison, as pure functions. Tested against the examples in the standards (SSCC `106141411234567897`, container `CSQU3054383`). The great-circle distance stays in the reference until geo needs it (S7).
+  Port: `logistics/standards` (`Iso6346ContainerValidator` is now `Iso6346ContainerCode`, `GreenLogisticsCalculator` is now `EmissionsCalculator`).
+  Done when: the standards tests pass, and `ModularityTest` shows `standards` with no dependencies.
 - [ ] **S05-03 Add warehouses, bin locations and inbound ASNs**
   Port: `logistics/wms`, `V1__wms_init.sql`.
 - [ ] **S05-04 Palletize with SSCC labels from a sequence**

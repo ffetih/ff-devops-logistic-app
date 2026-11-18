@@ -86,6 +86,10 @@ Local patches on top of the release:
 | `argocd-cmd-params-cm` | `server.insecure: "true"`, no self-signed HTTPS redirect on localhost |
 | `argocd-server` Service | NodePort 30080, published by k3d on host port 8080 |
 | `argocd-dex-server` | 0 replicas: only the local admin account signs in, so SSO is not needed |
+| `argocd-cm` | `timeout.reconciliation: 60s`, jitter 10 s: Git is polled every minute instead of every three to four |
+| `argocd-application-controller`, `argocd-repo-server` | A pod template annotation with the same value, so the sync that changes the poll also restarts the two pods that read it |
+
+Argo CD learns about a merge by polling Git; nothing tells it. A pushed commit is seen on the next poll, now within about 70 seconds, and the **Refresh** button (or `argocd app get <name> --refresh`) asks at once. The two settings are read into environment variables at start, which is why the annotation exists: changing only the ConfigMap would leave the running pods on the old value until something restarted them. A webhook from GitHub would make it instant, but GitHub cannot reach `localhost:8080`; that comes with Argo Events (S14).
 
 ## Helm chart and values
 
@@ -141,12 +145,12 @@ A service deploys the image tag in its `image-local.yaml`. Until CI has publishe
 
 ### One ApplicationSet for every service
 
-`deploy/argocd/apps/services.yaml` is an ApplicationSet with a Git directory generator: every folder under `deploy/apps/` becomes an Application of the same name, rendered with the shared chart and that folder's three values files. Adding a service means adding a folder; nothing under `deploy/argocd` changes.
+`deploy/argocd/apps/services.yaml` is an ApplicationSet with a Git directory generator: every folder under `deploy/apps/` becomes an Application of the same name, rendered with the shared chart and that folder's three values files. Adding a service means adding a folder; nothing under `deploy/argocd` changes. The generator polls Git on its own timer, set to 60 seconds with `requeueAfterSeconds` to match the Applications.
 
 ```text
 deploy/apps/identity/       ──►  Application identity
 deploy/apps/logistics-app/  ──►  Application logistics-app
-deploy/apps/<new>/          ──►  Application <new>   (on the generator's next poll, about 3 minutes)
+deploy/apps/<new>/          ──►  Application <new>   (on the generator's next poll, within a minute)
 ```
 
 The platform pieces (Argo CD, Argo Rollouts, PostgreSQL, Keycloak) keep hand-written Applications: each is shaped differently, and there are few of them.
@@ -173,7 +177,7 @@ From commit to cluster:
 merge PR ──► CI on main ──► image ghcr.io/ffetih/ff-devops-logistic-app/logistics-app:<sha>
                        └──► commit "Publish image tags" (image-local.yaml)
                                       │
-                Argo CD polls Git (about every 3 minutes)
+                   Argo CD polls Git (about every minute)
                                       ▼
                        logistics-app OutOfSync ──► manual sync ──► new pod
 ```

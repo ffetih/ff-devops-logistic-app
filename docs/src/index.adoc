@@ -19,9 +19,13 @@ Pick the guide that matches what you need:
 | link:identity/identity-guide.html[Identity Service Guide]
 | Developers of any service
 | How do users and partner systems sign in, how does a service verify tokens, how are users created?
+
+| link:logistics/logistics-guide.html[Logistics App Guide]
+| Developers of the logistics app
+| Which modules make up the app, what may each use, and how do its parts (standards, warehouses, transport) work?
 |===
 
-More guides come with the parts they describe (logistics, analytics, integration, console); the plan is in `docs/backlog.md`.
+More guides come with the parts they describe (analytics, integration, console); the plan is in `docs/backlog.md`.
 
 Version: {project-version}
 

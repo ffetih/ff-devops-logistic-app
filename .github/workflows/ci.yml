@@ -58,6 +58,10 @@ jobs:
             helm template "$name" deploy/charts/ff-service -f "$app/values.yaml" -f "$app/values-local.yaml" > /dev/null
             echo "::endgroup::"
           done
+          # Every shape the chart can render, whichever one the services use today.
+          base=(-f deploy/apps/logistics-app/values.yaml -f deploy/apps/logistics-app/values-local.yaml)
+          helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=false > /dev/null
+          helm template x deploy/charts/ff-service "${base[@]}" --set rollout.enabled=true --set rollout.strategy=canary > /dev/null
       - name: Kustomizations
         run: |
           set -euo pipefail

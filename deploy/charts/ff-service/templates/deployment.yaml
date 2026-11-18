@@ -1,3 +1,4 @@
+{{- if not .Values.rollout.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,54 +12,5 @@ spec:
     matchLabels:
       {{- include "ff-service.selectorLabels" . | nindent 6 }}
   template:
-    metadata:
-      labels:
-        {{- include "ff-service.labels" . | nindent 8 }}
-    spec:
-      # Otherwise Kubernetes adds <SERVICE>_PORT=tcp://<ip>:<port> for every Service in the
-      # namespace, and Spring reads e.g. LOGISTICS_APP_PORT as a property it does not expect.
-      # Services find each other by DNS name instead.
-      enableServiceLinks: false
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      containers:
-        - name: {{ include "ff-service.name" . }}
-          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: {{ .Values.containerPort }}
-          {{- with .Values.env }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          startupProbe:
-            httpGet:
-              path: {{ .Values.probes.liveness }}
-              port: http
-            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
-            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.probes.readiness }}
-              port: http
-            periodSeconds: {{ .Values.probes.readinessPeriodSeconds }}
-          livenessProbe:
-            httpGet:
-              path: {{ .Values.probes.liveness }}
-              port: http
-            periodSeconds: {{ .Values.probes.livenessPeriodSeconds }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
+    {{- include "ff-service.podTemplate" . | nindent 4 }}
+{{- end }}

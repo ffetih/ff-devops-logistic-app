@@ -152,7 +152,7 @@ Goal: the shared libraries exist and are tested; PostgreSQL runs in the cluster;
 - [x] **S03-04 Add tenant-aware persistence**
   Hibernate `@TenantId`, database sequences, auto-configuration. Not used by the app until its first entity (S5).
   Port: `base/ff-base-persistence`.
-- [ ] **S03-05 Run PostgreSQL 17 in the cluster**
+- [x] **S03-05 Run PostgreSQL 17 in the cluster**
   Application `postgres` in the app of apps: a StatefulSet with a volume, a Secret with local-only credentials, NodePort 5432 for runs from the IDE.
   Port: `deploy/overlays/local/platform/postgres.yaml`.
   Done when: `psql -h localhost -U fflogistics ff_logistics` answers from WSL.

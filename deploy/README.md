@@ -8,6 +8,7 @@ deploy/
 ├── argocd/                   Argo CD: pinned release, local patches, root Application
 │   └── apps/                 what the root creates: AppProject, one Application per service
 ├── platform/argo-rollouts/   Argo Rollouts: pinned controller release
+├── platform/postgres/        PostgreSQL 17: Deployment, volume, local credentials, NodePort 5432
 ├── charts/ff-service/        one Helm chart for every Spring service
 └── apps/<name>/              per-service values: values.yaml, values-local.yaml, image-local.yaml
 ```
@@ -115,6 +116,7 @@ ff-root  (auto sync: only Argo CD objects)
 ├── AppProject ff-logistics     sync wave -1: this repo, namespace ff-logistics only
 ├── Application argocd          manual sync: Argo CD itself, from deploy/argocd
 ├── Application argo-rollouts   manual sync: the Rollouts controller and CRDs
+├── Application postgres        manual sync, wave -1: the database the services use
 └── Application logistics-app   manual sync: chart + apps/logistics-app values
 ```
 
@@ -243,3 +245,27 @@ kubectl -n ff-logistics get analysisrun
 ```
 
 A broken release on purpose: in `values-local.yaml` set `FF_RELEASE_HEALTHY` to `"false"`, commit, push, sync. The analysis run fails at 25 %, the rollout aborts and the canary pod goes away; users never left the stable pods. Argo CD shows `Degraded` because Git still asks for the broken release. Set it back to `"true"`, push and sync to recover.
+
+## PostgreSQL
+
+`deploy/platform/postgres` through the `postgres` Application: one PostgreSQL 17 server in the `ff-logistics` namespace, database `ff_logistics`, data on a k3s local-path volume.
+
+```bash
+argocd app sync postgres && argocd app wait postgres --health
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version()'
+```
+
+From WSL or Windows tools (IntelliJ database view, DBeaver): `localhost:5432`, database `ff_logistics`, user `fflogistics`, password `fflogisticsDb2026`. These are local-only values from `secret.yaml`.
+
+```bash
+sudo apt install -y postgresql-client     # once, for psql in WSL
+PGPASSWORD=fflogisticsDb2026 psql -h localhost -U fflogistics ff_logistics
+```
+
+The volume claim `postgres-data` is never pruned and survives deleting the Application. `k3d cluster delete` removes it with the cluster. To start over with an empty database on purpose:
+
+```bash
+kubectl -n ff-logistics scale deploy/postgres --replicas=0
+kubectl -n ff-logistics delete pvc postgres-data
+argocd app sync postgres
+```

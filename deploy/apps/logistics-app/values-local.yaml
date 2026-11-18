@@ -42,6 +42,12 @@ env:
       secretKeyRef:
         name: postgres-credentials
         key: password
+  # Tokens are checked against the identity service's keys; their issuer is Keycloak's
+  # public address (deploy/platform/keycloak).
+  - name: IDENTITY_JWKS_URI
+    value: http://identity:8085/jwks
+  - name: IDENTITY_TOKEN_ISSUER
+    value: http://localhost:8180/realms/ff-logistics
   # A broken release on purpose: set "false", commit, sync. The analysis fails at 25% and the
   # rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
   - name: FF_RELEASE_HEALTHY

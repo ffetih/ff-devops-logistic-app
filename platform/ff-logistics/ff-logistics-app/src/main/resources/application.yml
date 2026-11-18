@@ -16,6 +16,16 @@ spring:
   flyway:
     # Scripts in db/migration. Module tables carry the module's prefix (wms_, tms_, geo_, rep_).
     enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Tokens are checked here, against the keys the identity service publishes: this process
+          # never calls Keycloak. issuer-uri is the iss every token must carry (Keycloak's public
+          # address), not a discovery URL. The defaults fit a run from the IDE.
+          jwk-set-uri: ${IDENTITY_JWKS_URI:http://localhost:8085/jwks}
+          issuer-uri: ${IDENTITY_TOKEN_ISSUER:http://localhost:8180/realms/ff-logistics}
+          audiences: ff-logistics-api
 
 management:
   endpoints:
@@ -47,3 +57,8 @@ ff:
     # false (FF_RELEASE_HEALTHY=false) turns /actuator/health/release DOWN, to show what a
     # canary analysis does with a broken release.
     healthy: true
+
+  security:
+    header-fallback:
+      # Local development only, switched on by the "local" profile (application-local.yml).
+      enabled: false

@@ -15,11 +15,14 @@ setlocal
 pushd "%~dp0"
 set MVN=call "%~dp0mvnw.cmd" -B
 
-echo [1/2] Base BOM and parent
+echo [1/3] Base BOM and parent
 %MVN% -q -f base\ff-base-bom\pom.xml install || goto failed
 %MVN% -q -f base\ff-base-parent\pom.xml install || goto failed
 
-echo [2/2] Done.
+echo [2/3] Platform: logistics app
+%MVN% -f platform\ff-logistics\ff-logistics-app\pom.xml install %* || goto failed
+
+echo [3/3] Done.
 popd
 endlocal
 exit /b 0

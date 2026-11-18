@@ -1,0 +1,25 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ff-logistics-app
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # /actuator/health/liveness and /readiness for the Kubernetes probes. Spring Boot turns
+      # these on by itself only when it detects Kubernetes; on here so the IDE and the tests
+      # see the same endpoints.
+      probes:
+        enabled: true
+  info:
+    git:
+      mode: simple

@@ -15,8 +15,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 MVN=(./mvnw -B)
 
-echo "[1/2] Base BOM and parent"
+echo "[1/3] Base BOM and parent"
 "${MVN[@]}" -q -f base/ff-base-bom/pom.xml install
 "${MVN[@]}" -q -f base/ff-base-parent/pom.xml install
 
-echo "[2/2] Done."
+echo "[2/3] Platform: logistics app"
+"${MVN[@]}" -f platform/ff-logistics/ff-logistics-app/pom.xml install "$@"
+
+echo "[3/3] Done."

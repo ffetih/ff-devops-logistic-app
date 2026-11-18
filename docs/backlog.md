@@ -67,7 +67,7 @@ Goal: an empty repository that builds, a k3d cluster, Argo CD running in it.
 - [x] **S00-04 Add k3d cluster config**
   Pinned k3s image, one server, no agents, Traefik off (NodePorts only), the port table above.
   Done when: `k3d cluster create --config deploy/cluster/k3d-config.yaml` gives a `Ready` node and context `k3d-ff-logistics`.
-- [ ] **S00-05 Bootstrap Argo CD**
+- [x] **S00-05 Bootstrap Argo CD**
   Pinned Argo CD release through a kustomization, UI on host port 8080 over plain HTTP, Dex scaled to zero.
   Absorbs: `21a6583` (server-side apply for the large CRDs).
   Done when: `http://localhost:8080` shows the login page and `argocd login localhost:8080 --plaintext` works.

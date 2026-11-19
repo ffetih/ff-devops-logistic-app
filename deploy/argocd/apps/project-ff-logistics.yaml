@@ -1,6 +1,6 @@
-# What the FF Logistics Applications may do: deploy from this repository only, into the
-# ff-logistics namespace only. Wave -1, so the project exists before the Applications
-# that name it.
+# What the FF Logistics Applications may do: deploy from this repository and the upstream
+# charts listed below, into the ff-logistics namespace only. Wave -1, so the project exists
+# before the Applications that name it.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -12,6 +12,7 @@ spec:
   description: FF Logistics services on the local cluster
   sourceRepos:
     - https://github.com/ffetih/ff-devops-logistic-app.git
+    - https://charts.rustfs.com                 # RustFS (deploy/argocd/apps/rustfs.yaml)
   destinations:
     - server: https://kubernetes.default.svc
       namespace: ff-logistics

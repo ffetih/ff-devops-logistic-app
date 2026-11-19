@@ -332,8 +332,9 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
   Port: `base/ff-base-storage`.
   Absorbs: `d0f3003` (write once), `4e28bff` (document links), the public endpoint and bucket creation of `67c2c56`. New: the 404 before an upload, the call timeout, 503 for a store that does not answer.
   Done when: the library's tests pass in CI, `RustFsWriteOnceTest` included.
-- [ ] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
-  Upstream chart plus `$values` from this repo.
+- [x] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
+  The `rustfs` Application has three sources: the upstream chart (`https://charts.rustfs.com`, `rustfs` 1.0.6), this repository as `$values` for `deploy/platform/rustfs/values.yaml`, and `deploy/platform/rustfs` for the credentials Secret. One standalone pod in `ff-logistics`, Service `rustfs-svc`, S3 API on host port 9000 (NodePort 30900), a 2 Gi claim with Prune=false and Delete=false, logs to stdout. The project allows the chart repository. Wave -1 like postgres.
+  Done when: `argocd app sync rustfs` turns Healthy and `curl localhost:9000/health` answers 200.
 - [ ] **S07-06 Issue presigned upload and download links**
   Absorbs: `c503898`, `67c2c56`.
 

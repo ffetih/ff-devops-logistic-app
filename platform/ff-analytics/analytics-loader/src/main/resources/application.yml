@@ -15,6 +15,9 @@ spring:
     password: ${ANALYTICS_DB_PASSWORD:fflogisticsDb2026}
   flyway:
     enabled: true
+    placeholders:
+      # The reader role's password (V2), from the analytics-reader-credentials Secret in the cluster.
+      analytics_reader_password: ${ANALYTICS_READER_PASSWORD:analyticsReader2026}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
     consumer:
@@ -57,3 +60,7 @@ analytics:
     retry-max-delay: ${ANALYTICS_LOADER_RETRY_MAX_DELAY:PT30S}
     dead-letter-partitions: 1
     dead-letter-replicas: ${ANALYTICS_LOADER_DLT_REPLICAS:1}
+  rollup:
+    # Recounts the months that received deliveries since the last run; also once at the start.
+    # Cheap (only the changed months), so it runs often. Months are UTC calendar months.
+    cron: ${ANALYTICS_ROLLUP_CRON:0 */5 * * * *}

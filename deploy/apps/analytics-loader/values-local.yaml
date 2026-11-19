@@ -31,6 +31,13 @@ env:
       secretKeyRef:
         name: postgres-credentials
         key: password
+  # The password the migration gives the analytics_reader role (S08-04), from the postgres
+  # Application's Secret: sync postgres before the loader.
+  - name: ANALYTICS_READER_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: analytics-reader-credentials
+        key: password
   # The kafka Application in the same namespace (deploy/platform/kafka).
   - name: KAFKA_BOOTSTRAP_SERVERS
     value: kafka:9092

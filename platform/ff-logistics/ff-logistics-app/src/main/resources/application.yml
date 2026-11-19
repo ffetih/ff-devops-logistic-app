@@ -7,6 +7,13 @@ spring:
   threads:
     virtual:
       enabled: true
+  task:
+    execution:
+      simple:
+        # Event listeners run with @Async on virtual threads, on an executor without a limit by
+        # default. A burst of events would then start every listener at once, all waiting for
+        # one of the 10 database connections. Above this limit the publisher waits for a slot.
+        concurrency-limit: ${TASK_EXECUTION_CONCURRENCY_LIMIT:16}
   # The defaults reach the cluster's PostgreSQL through NodePort 5432, so a run from the IDE
   # needs no settings. In the cluster the chart sets LOGISTICS_DB_* from the postgres Secret.
   datasource:
@@ -22,6 +29,15 @@ spring:
   flyway:
     # Scripts in db/migration. Module tables carry the module's prefix (wms_, tms_, geo_, rep_).
     enabled: true
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          # event_publication is created by Flyway (V8), like every other table.
+          enabled: false
+      # Off: every pod would publish all unfinished events again at its start, four pods four
+      # times. S06-10 resubmits them on a schedule, from one pod at a time.
+      republish-outstanding-events-on-restart: false
   security:
     oauth2:
       resourceserver:

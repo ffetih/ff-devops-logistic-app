@@ -25,20 +25,8 @@ class ShipmentApiTest {
     static final String SSCC = "106141411234567897";
     static final String CONTAINER = "CSQU3054383";
 
-    /** 22 t from Istanbul: Ro-Ro to Trieste, block train to Cologne, the last 80 km by truck. */
     static String shipment(String equipment, String sscc, String lastLegDestination) {
-        return """
-                {"consignorName": "Bosch Bursa", "consigneeName": "Rhein Parts GmbH",
-                 "equipmentCode": "%s", "sscc": "%s", "incoterm": "DAP",
-                 "origin": "Istanbul Pendik", "destination": "Cologne Eifeltor", "grossWeightKg": 22000,
-                 "legs": [
-                   {"mode": "SEA_RORO", "origin": "Istanbul Pendik", "destination": "Trieste",
-                    "distanceKm": 1450, "carrierReference": "DFDS-PT-2611"},
-                   {"mode": "RAIL", "origin": "Trieste", "destination": "Cologne Eifeltor Terminal",
-                    "distanceKm": 1050, "carrierReference": "TXL-41877"},
-                   {"mode": "ROAD", "origin": "Cologne Eifeltor Terminal", "destination": "%s",
-                    "distanceKm": 80, "carrierReference": "TR-34-FF-0417"}]}
-                """.formatted(equipment, sscc, lastLegDestination);
+        return TmsRequests.shipment(equipment, sscc, lastLegDestination);
     }
 
     @Autowired

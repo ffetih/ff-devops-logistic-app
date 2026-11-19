@@ -3,6 +3,7 @@ package com.siose.ff.logistics.tms.service;
 import com.siose.ff.base.persistence.DatabaseSequences;
 import com.siose.ff.base.web.ResourceNotFoundException;
 import com.siose.ff.logistics.standards.TransportMode;
+import com.siose.ff.logistics.tms.ShipmentDelivered;
 import com.siose.ff.logistics.tms.domain.Incoterm;
 import com.siose.ff.logistics.tms.domain.Shipment;
 import com.siose.ff.logistics.tms.domain.ShipmentRepository;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -35,12 +37,14 @@ public class ShipmentService {
     private final ShipmentRepository shipments;
     private final DatabaseSequences sequences;
     private final TransactionTemplate transactions;
+    private final ApplicationEventPublisher events;
 
     ShipmentService(ShipmentRepository shipments, DatabaseSequences sequences,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, ApplicationEventPublisher events) {
         this.shipments = shipments;
         this.sequences = sequences;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.events = events;
     }
 
     public record NewShipment(
@@ -153,11 +157,19 @@ public class ShipmentService {
      * {@code DELIVERED} and is refused by the lifecycle (409 shipment-status-conflict). One that
      * read the shipment before the first committed fails at its own commit, on the version
      * (409 concurrent-update). Either way the shipment is delivered exactly once.
+     *
+     * <p>{@link ShipmentDelivered} is published in the same transaction. The event publication
+     * registry writes it to {@code event_publication} with the shipment's update: both commit, or
+     * neither. A confirmation that loses on the version therefore publishes nothing, and one that
+     * wins cannot lose its event, even if the pod stops right after the commit.
      */
     @Transactional
     public ShipmentView deliver(UUID id, Delivery delivery) {
         Shipment shipment = shipment(id);
         shipment.deliver(Instant.now(), delivery.receivedBy());
+        events.publishEvent(new ShipmentDelivered(shipment.getId(), shipment.getTenantId(),
+                shipment.getShipmentNumber(), shipment.getCustomerOrderReference(), shipment.getTotalDistanceKm(),
+                shipment.getSavedCo2eKg(), shipment.getDeliveredAt()));
         return view(shipment);
     }
 

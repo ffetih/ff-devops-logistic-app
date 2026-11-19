@@ -64,6 +64,16 @@ shutdown:
 # Kubernetes this long after they finish, passed or failed: a day to read their logs.
 hookJobTtlSeconds: 86400
 
+# The service's own database on the shared PostgreSQL server, created by a PreSync hook before
+# the migration when it is missing (templates/job-database.yaml). adminSecret holds the server's
+# superuser (keys username and password); the service itself may connect with other credentials.
+database:
+  create: false
+  name: ""
+  host: postgres
+  adminSecret: postgres-credentials
+  image: docker.io/library/postgres:17-alpine
+
 migration:
   enabled: false
   profile: migrate

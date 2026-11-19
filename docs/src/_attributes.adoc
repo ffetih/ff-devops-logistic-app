@@ -17,11 +17,15 @@
 :port-identity: 8085
 :port-keycloak: 8180
 :port-postgres: 5432
+:port-analytics-loader: 8086
+:port-rustfs: 9000
+:port-kafka: 9094
 // Links between guides. Every guide is built into its own folder one level below docs/build/html,
 // so these relative paths work from every guide (see "Working on this documentation" in the Platform Guide).
 :url-platform-guide: ../platform/platform-guide.html
 :url-identity-guide: ../identity/identity-guide.html
 :url-logistics-guide: ../logistics/logistics-guide.html
+:url-analytics-guide: ../analytics/analytics-guide.html
 :url-operations-guide: ../operations/operations-guide.html
 :url-repo: https://github.com/ffetih/ff-devops-logistic-app
 :toc: left

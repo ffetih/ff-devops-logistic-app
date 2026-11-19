@@ -24,12 +24,16 @@ Pick the guide that matches what you need:
 | Developers of the logistics app
 | Which modules make up the app, what may each use, and how do its parts (standards, warehouses, transport) work?
 
+| link:analytics/analytics-guide.html[Analytics Guide]
+| Developers of the analytics side
+| How do business events get from Kafka into the analytics database, what happens to a message that cannot be loaded, and what does the database hold?
+
 | link:operations/operations-guide.html[Operations Guide]
 | DevOps, whoever runs the cluster
 | Something is red: where to look first, and what each problem met so far meant and how it was fixed.
 |===
 
-More guides come with the parts they describe (analytics, integration, console); the plan is in `docs/backlog.md`.
+More guides come with the parts they describe (integration, console); the plan is in `docs/backlog.md`.
 
 Version: {project-version}
 

@@ -1,0 +1,59 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: ff-analytics-loader
+  threads:
+    virtual:
+      enabled: true
+  # The analytics database, on the cluster's PostgreSQL (NodePort 5432 from the IDE). The loader is
+  # its only writer and owns its schema. In the cluster the chart sets ANALYTICS_DB_* (S08-03).
+  datasource:
+    url: ${ANALYTICS_DB_URL:jdbc:postgresql://localhost:5432/ff_logistics_analytics}
+    username: ${ANALYTICS_DB_USERNAME:fflogistics}
+    password: ${ANALYTICS_DB_PASSWORD:fflogisticsDb2026}
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: ${ANALYTICS_LOADER_GROUP_ID:ff-analytics-loader}
+      # A new consumer group starts at the oldest message, so nothing sent before it is skipped.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # The topics are the logistics app's. If the loader starts first, it subscribes to them
+        # within 30 s of their creation instead of Kafka's default 5 minutes.
+        metadata.max.age.ms: 30000
+    producer:
+      # For the dead-letter topics only.
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    admin:
+      # The dead-letter topics are created at the start; without a broker, do not hold it long.
+      operation-timeout: 5s
+      close-timeout: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    git:
+      mode: simple
+
+analytics:
+  loader:
+    # Waiting for the database while it is down: first pause, doubled up to this, without end.
+    retry-first-delay: ${ANALYTICS_LOADER_RETRY_FIRST_DELAY:PT1S}
+    retry-max-delay: ${ANALYTICS_LOADER_RETRY_MAX_DELAY:PT30S}
+    dead-letter-partitions: 1
+    dead-letter-replicas: ${ANALYTICS_LOADER_DLT_REPLICAS:1}

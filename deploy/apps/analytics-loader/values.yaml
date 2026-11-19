@@ -1,0 +1,8 @@
+# Analytics loader, every environment. Overrides deploy/charts/ff-service/values.yaml.
+image:
+  repository: ghcr.io/ffetih/ff-devops-logistic-app/analytics-loader
+
+containerPort: 8086
+
+service:
+  port: 8086

@@ -46,6 +46,12 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: platform/ff-identity/identity-service/target/siose-ff-identity-service.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analytics-loader-jar
+          retention-days: 1
+          if-no-files-found: error
+          path: platform/ff-analytics/analytics-loader/target/siose-ff-analytics-loader.jar
 
   manifests:
     name: Render manifests
@@ -120,6 +126,10 @@ jobs:
         with:
           name: ff-identity-jar
           path: platform/ff-identity/identity-service/target
+      - uses: actions/download-artifact@v4
+        with:
+          name: analytics-loader-jar
+          path: platform/ff-analytics/analytics-loader/target
       - name: Build and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -155,6 +165,7 @@ jobs:
           }
           publish identity platform/ff-identity/identity-service
           publish logistics-app platform/ff-logistics/ff-logistics-app
+          publish analytics-loader platform/ff-analytics/analytics-loader
       - name: Commit image tags
         run: |
           set -euo pipefail

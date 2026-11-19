@@ -34,6 +34,9 @@ node "k3d cluster ff-logistics" {
     [identity\nDeployment :{port-identity}] as id
     [Keycloak\n:{port-keycloak}] as kc
     database "PostgreSQL 17\n:{port-postgres}" as pg
+    [analytics-loader\nDeployment :{port-analytics-loader}] as al
+    queue "Kafka\n:{port-kafka}" as kafka
+    [RustFS\n:{port-rustfs}] as s3
   }
 }
 cloud "GitHub" {
@@ -44,7 +47,12 @@ user --> app : Bearer token
 user --> id : sign in
 id --> kc : grants, JWKS
 app --> id : JWKS
-app --> pg
+app --> pg : ff_logistics
+app --> kafka : shipment events
+kafka --> al
+al --> pg : ff_logistics_analytics
+app --> s3 : sign links
+user --> s3 : documents
 acd --> repo : poll
 acd --> app
 ro --> app : canary, analysis
@@ -58,8 +66,11 @@ app ..> ghcr : image
 
 | `logistics-app` | Spring Boot, Rollout | The logistics product: Spring Modulith modules in one deployable, added sprint by sprint (link:{url-logistics-guide}[Logistics App Guide]).
 | `identity` | Spring Boot, Deployment | The only process that calls Keycloak: sign-in, JWKS, users, integration clients (link:{url-identity-guide}[Identity Service Guide]).
+| `analytics-loader` | Spring Boot, Deployment | Loads business events from Kafka into the analytics database (link:{url-analytics-guide}[Analytics Guide]).
 | Keycloak {keycloak-version} | platform | Identity provider with the `{keycloak-realm}` realm from Git.
-| PostgreSQL 17 | platform | Database `ff_logistics`; data on a volume Argo CD never prunes.
+| PostgreSQL 17 | platform | Databases `ff_logistics` and `ff_logistics_analytics`; data on a volume Argo CD never prunes.
+| Kafka 4.2 | platform | One broker (KRaft): business events that leave the logistics app.
+| RustFS | platform | S3-compatible object store for documents, from its upstream Helm chart.
 | Argo CD {argocd-version} | platform | Applies `deploy/` from `main`; manages its own installation.
 | Argo Rollouts {rollouts-version} | platform | Releases the logistics app as a canary with an analysis.
 |===

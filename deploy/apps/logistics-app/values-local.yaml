@@ -40,6 +40,8 @@ smokeTest:
     - {path: /api/v1/wms/warehouses, status: 200, token: true}
     - {path: /api/v1/wms/asns, status: 200, token: true}
     - {path: /api/v1/tms/shipments, status: 200, token: true}
+    - {path: /api/v1/geo/territories, status: 200, token: true}
+    - {path: /api/v1/geo/routes, status: 200, token: true}
     - {path: /api/v1/reporting/deliveries, status: 200, token: true}
 
 # Every variable in one list: Helm replaces lists, it does not merge them, so an env list in

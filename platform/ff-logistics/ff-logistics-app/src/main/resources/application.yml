@@ -94,6 +94,8 @@ ff:
 
 # The event outbox's upkeep (package outbox). Durations are ISO-8601.
 logistics:
+  geo:
+    max-stops: ${GEO_MAX_STOPS:99}                      # BR-GEO-07: a longer list is refused before any work
   events:
     resubmit-delay: ${EVENTS_RESUBMIT_DELAY:PT30S}       # how often a pod tries to take the lock and resubmit
     resubmit-min-age: ${EVENTS_RESUBMIT_MIN_AGE:PT1M}    # first wait after a failure

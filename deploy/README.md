@@ -331,7 +331,14 @@ kubectl -n ff-logistics logs $(kubectl -n ff-logistics get jobs -l app.kubernete
 kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version, description, success from flyway_schema_history'
 ```
 
-Every sync creates a new Job with a generated name (`logistics-app-migrate-x7k2p`), and Kubernetes deletes each one a day after it finishes (`ttlSecondsAfterFinished`), passed or failed, so the logs of the last day's runs can be read. A fixed name would be reused by every sync, and Argo CD could then read the Job left by the sync before, still being deleted, as this sync's result (S06-02). The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
+Every sync creates a new Job with a name of its own (see below), and Kubernetes deletes each one a day after it finishes (`ttlSecondsAfterFinished`), passed or failed, so the logs of the last day's runs can be read. A fixed name would be reused by every sync, and Argo CD could then read the Job left by the sync before as this sync's result (S06-02). That Job does not go away when it is deleted: Argo CD puts a finalizer, `argocd.argoproj.io/hook-finalizer`, on every hook and removes it only once it has read the hook's result, which it never does for a Job of an earlier sync. Such a Job then stays with a deletion time, and `kubectl delete job` waits for it forever. To remove one by hand, take the finalizer off:
+
+```bash
+kubectl -n ff-logistics get job <name> -o custom-columns=FINALIZERS:.metadata.finalizers,DELETING:.metadata.deletionTimestamp
+kubectl -n ff-logistics patch job <name> --type=merge -p '{"metadata":{"finalizers":null}}'
+```
+
+Argo CD names a generated hook Job after the prefix, the commit, the phase and the time: `logistics-app-migrate-6e6ff6a-presync-1795080906`. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
 
 While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).
 

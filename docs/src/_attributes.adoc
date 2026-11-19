@@ -22,6 +22,7 @@
 :url-platform-guide: ../platform/platform-guide.html
 :url-identity-guide: ../identity/identity-guide.html
 :url-logistics-guide: ../logistics/logistics-guide.html
+:url-operations-guide: ../operations/operations-guide.html
 :url-repo: https://github.com/ffetih/ff-devops-logistic-app
 :toc: left
 :toclevels: 3

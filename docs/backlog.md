@@ -215,7 +215,7 @@ Three pull requests:
 | :--- | :--- | :--- |
 | A | S05-00 … S05-02 | A merge shows up as OutOfSync within about a minute; the new image rolls out as a canary, with no new tables |
 | B | S05-03 … S05-04 | The PreSync hook applies `V2` and `V3`; warehouses, bin locations, ASNs and pallets with SSCC labels work with a token |
-| C | S05-05 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer |
+| C | S05-05 … S05-06 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer; the canary analysis runs without the error measurement |
 
 - [x] **S05-00 Poll Git every minute**
   `timeout.reconciliation: 60s` (jitter 10 s) in `argocd-cm`, and `requeueAfterSeconds: 60` on the ApplicationSet's Git generator. The controller and the repo server read the value only at start, so their pod templates carry it as an annotation: the sync that changes the value restarts them.
@@ -240,6 +240,9 @@ Three pull requests:
   The shared chart gets `smokeTest`: a PostSync hook Job (`curlimages/curl`, a shell script in a ConfigMap) that signs in through the identity service and checks a list of `GET`s through the Service, with status and an optional text in the body. The logistics app checks readiness, `/api/v1/me` with and without a token, warehouses and ASNs, as `nexus.planner` (Secret `smoke-test-user`). Only reads, so a sync leaves no data behind.
   Port: `test-live-apis.ps1` (its read checks; the writes stay in the guide's walkthrough).
   Done when: a sync of `logistics-app` ends with the smoke test Job `Succeeded`, and a check changed to expect another tenant turns the sync `Failed`.
+- [x] **S05-06 Wait before the first canary measurement**
+  `initialDelay: 10s` on the release analysis. Every analysis run so far showed `✓ 3, ⚠ 1`: one measurement ended in an error, not a failure, most likely a call through the canary Service before its endpoints held the new pod.
+  Done when: the next canary's analysis run shows `✓ 3` and no `⚠`.
 
 ## S6 — TMS and in-process events
 

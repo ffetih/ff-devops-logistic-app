@@ -12,6 +12,7 @@ metadata:
 spec:
   metrics:
     - name: release-health
+      initialDelay: {{ $a.initialDelay }}
       interval: {{ $a.interval }}
       count: {{ $a.count }}
       failureLimit: 0

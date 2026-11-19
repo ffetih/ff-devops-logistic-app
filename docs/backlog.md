@@ -253,8 +253,18 @@ Three pull requests:
 
 ## S6 — TMS and in-process events
 
-- [ ] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
-  Port: `logistics/tms`, `V2__tms_init.sql`.
+Goal: shipments from planning to delivery, and the first event between modules, published in the same transaction as the change that causes it.
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S06-01 | The PreSync hook applies `V4`; a shipment with three legs comes back numbered, with its CO2e; the smoke test checks the shipment list |
+| B | S06-02 … S06-04 | The lifecycle: pickup, departure, delivery; one shipment per customer order number; two deliveries at once give one success and one `409` |
+| C | S06-05 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
+
+- [x] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
+  The `tms` module and its first tables (`V4__tms_init.sql`): a shipment numbered from `tms_shipment_seq` (`SHP-10001`, e-CMR `ECMR-10001`), with consignor, consignee, an ISO 6346 equipment code, the SSCC it carries and an Incoterm, and its legs in order. The legs must form one chain from origin to destination. The EN 16258 footprint from `standards` is calculated when the shipment is planned and kept. The smoke test now also lists shipments.
+  Port: `logistics/tms`, `V2__tms_init.sql` (renamed: `tms_shipments`; the e-CMR PDF comes with documents in S7).
+  Done when: after the sync, the hook has applied `V4`, and the walkthrough's shipment comes back with 1606.22 kg CO2e.
 - [ ] **S06-02 Confirm delivery once under concurrency**
   Absorbs: `b6b8378`, `V5`, `V8`.
 - [ ] **S06-03 Create one shipment per customer order number**

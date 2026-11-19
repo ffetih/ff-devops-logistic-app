@@ -347,6 +347,7 @@ PostSync  Job logistics-app-smoke-test   sign in as nexus.planner, then GET:
                                            /api/v1/me                   401 without a token
                                            /api/v1/me                   200, tenant ff-eu-freight
                                            /api/v1/wms/warehouses, asns 200
+                                           /api/v1/tms/shipments        200
           ├── a check fails → the Job fails → the sync is Failed (the release stays; look, or roll back)
           └── all pass → the sync Succeeded
 ```

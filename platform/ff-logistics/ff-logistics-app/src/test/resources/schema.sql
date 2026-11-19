@@ -2,3 +2,4 @@
 -- sequences. The ones DatabaseSequences reads are created here; in the cluster the Flyway
 -- scripts create them.
 CREATE SEQUENCE IF NOT EXISTS wms_sscc_serial_seq START WITH 100001 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS tms_shipment_seq START WITH 10001 INCREMENT BY 1;

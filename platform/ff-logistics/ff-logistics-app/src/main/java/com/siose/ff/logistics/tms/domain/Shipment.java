@@ -106,6 +106,13 @@ public class Shipment extends TenantAwareEntity {
     private String receivedBy;
 
     /**
+     * Where the signed e-CMR (the consignment note as a PDF) is stored: {@code s3://<bucket>/<key>}.
+     * Reserved when the first upload link is asked for; null until then.
+     */
+    @Column(length = 300)
+    private String ecmrDocumentUri;
+
+    /**
      * Optimistic lock: two requests that read the same shipment and both change it cannot both
      * commit. The second fails, so a shipment is delivered once even when two drivers' apps
      * confirm at the same moment.
@@ -342,6 +349,18 @@ public class Shipment extends TenantAwareEntity {
 
     public String getReceivedBy() {
         return receivedBy;
+    }
+
+    public String getEcmrDocumentUri() {
+        return ecmrDocumentUri;
+    }
+
+    /** Records where the signed e-CMR goes; once, a reserved location never moves. */
+    public void reserveConsignmentNote(String objectUri) {
+        if (ecmrDocumentUri != null) {
+            throw new IllegalStateException("Shipment " + shipmentNumber + " already has an e-CMR location");
+        }
+        ecmrDocumentUri = objectUri;
     }
 
     public List<TransportLeg> getLegs() {

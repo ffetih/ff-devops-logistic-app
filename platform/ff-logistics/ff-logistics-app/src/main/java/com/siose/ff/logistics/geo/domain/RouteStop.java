@@ -46,6 +46,13 @@ public class RouteStop extends TenantAwareEntity {
 
     private Integer dueMinutes;
 
+    /**
+     * Where the proof of delivery (the consignee's signature) is stored: {@code s3://<bucket>/<key>}.
+     * Reserved when the first upload link is asked for; null until then.
+     */
+    @Column(length = 300)
+    private String epodDocumentUri;
+
     protected RouteStop() {
     }
 
@@ -109,5 +116,17 @@ public class RouteStop extends TenantAwareEntity {
 
     public Integer getDueMinutes() {
         return dueMinutes;
+    }
+
+    public String getEpodDocumentUri() {
+        return epodDocumentUri;
+    }
+
+    /** Records where the proof of delivery goes; once, a reserved location never moves. */
+    public void reserveProofOfDelivery(String objectUri) {
+        if (epodDocumentUri != null) {
+            throw new IllegalStateException("Stop " + stopCode + " already has a proof-of-delivery location");
+        }
+        epodDocumentUri = objectUri;
     }
 }

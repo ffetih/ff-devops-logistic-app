@@ -410,6 +410,34 @@ Only pods started with this setting stop this way: the release that brings it st
 
 To see it fail: in `values-local.yaml`, set `contains` of the token check on `/api/v1/me` to `"tenantId":"ff-tr-distribution"`, commit, sync. The pods do not change, so nothing rolls out; Argo CD applies the new ConfigMap, runs the Job, and the sync turns Failed with the failed check in the Job log. Revert and sync.
 
+## RustFS
+
+The object store for documents, from the upstream chart: the `rustfs` Application has three sources.
+
+```text
+deploy/argocd/apps/rustfs.yaml
+  source 1  https://charts.rustfs.com  chart rustfs 1.0.6   the chart, never copied into Git
+              helm.valueFiles: $values/deploy/platform/rustfs/values.yaml
+  source 2  this repository, ref: values                    what $values points at
+  source 3  this repository, deploy/platform/rustfs         kustomize: the credentials Secret
+```
+
+Upgrading RustFS is a new `targetRevision`, and the values file holds only what differs from the chart's defaults: one pod instead of a distributed cluster, the credentials from `rustfs-credentials`, logs to stdout, NodePort 30900 for the S3 API, a 2 Gi data claim that is never pruned. The project `ff-logistics` lists `https://charts.rustfs.com` among its source repositories; without it Argo CD refuses the Application.
+
+```bash
+argocd app manifests rustfs | grep -E '^kind:|^  name:'            # what the chart renders from Git
+argocd app sync rustfs && argocd app wait rustfs --health
+curl -s -o /dev/null -w '%{http_code}\n' localhost:9000/health    # 200
+```
+
+Names: Deployment `rustfs`, Service `rustfs-svc` (S3 API 9000, console 9001), claim `rustfs-data`. Credentials, local only, from `deploy/platform/rustfs/secret.yaml`: access key `fflogistics`, secret key `fflogisticsS3-2026`. The console is not on a host port:
+
+```bash
+kubectl -n ff-logistics port-forward svc/rustfs-svc 9001:9001    # then http://localhost:9001
+```
+
+To start over with an empty store on purpose: scale the Deployment to 0, delete the claim `rustfs-data`, sync.
+
 ## Keycloak
 
 `deploy/platform/keycloak` through the `keycloak` Application: Keycloak 26 in dev mode with the `ff-logistics` realm imported at start.

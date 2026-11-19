@@ -327,13 +327,18 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
   A stop may have a time window, `readyMinutes` and `dueMinutes` after departure (`V11`, both or neither). A vehicle that comes early waits. Up to 8 stops without windows keep nearest neighbour; any window, or more stops, go to Timefold: one tour, hard one point per minute late, soft one point per metre. It stops after 0.2 s without improvement, at the latest after 1 s. Late in the best order found: `400`. Timefold 2.8.0 is managed in the base BOM.
   Absorbs: `da10b36`, `0a4b9c0` (unimproved limit, version in the BOM).
   Done when: after the sync, the hook has applied `V11`, and the walkthrough's two-stop route with a window at Kadikoy comes back Kadikoy first, at minute 64.
-- [ ] **S07-04 Add the storage library**
+- [x] **S07-04 Add the storage library**
+  `siose-ff-base-storage`: `ObjectStoragePort` with a reference-only adapter (default) and an S3 adapter for any S3-compatible store, wired only when the service adds the AWS SDK. One bucket, a key prefix per tenant. `DocumentLinks` signs 15-minute upload and download links for a location under the caller's tenant; an upload link is refused once the document is stored (`409`) and carries `If-None-Match: *`; a download link is refused before it is (`404`). Links are signed for a public endpoint when the service reaches the store by an internal name. The exceptions extend base-web's, so their problem types need no handler: `409 document-already-stored`, `503 object-store-unavailable`. A store call is limited to 10 s. `RustFsWriteOnceTest` checks the write-once rule against RustFS 1.0.6 in CI.
   Port: `base/ff-base-storage`.
-  Absorbs: `d0f3003` (write once), `4e28bff` (document links).
-- [ ] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
-  Upstream chart plus `$values` from this repo.
-- [ ] **S07-06 Issue presigned upload and download links**
-  Absorbs: `c503898`, `67c2c56`.
+  Absorbs: `d0f3003` (write once), `4e28bff` (document links), the public endpoint and bucket creation of `67c2c56`. New: the 404 before an upload, the call timeout, 503 for a store that does not answer.
+  Done when: the library's tests pass in CI, `RustFsWriteOnceTest` included.
+- [x] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
+  The `rustfs` Application has three sources: the upstream chart (`https://charts.rustfs.com`, `rustfs` 1.0.6), this repository as `$values` for `deploy/platform/rustfs/values.yaml`, and `deploy/platform/rustfs` for the credentials Secret. One standalone pod in `ff-logistics`, Service `rustfs-svc`, S3 API on host port 9000 (NodePort 30900), a 2 Gi claim with Prune=false and Delete=false, logs to stdout. The project allows the chart repository. Wave -1 like postgres.
+  Done when: `argocd app sync rustfs` turns Healthy and `curl localhost:9000/health` answers 200.
+- [x] **S07-06 Issue presigned upload and download links**
+  The logistics app uses the storage library with RustFS in the cluster (`STORAGE_PROVIDER=s3`, `rustfs-svc:9000` inside, links for `localhost:9000`, the keys from `rustfs-credentials`). Two documents: a route stop's proof of delivery (`epod/<route>-<stop>/signature.png`) and a shipment's e-CMR (`ecmr/<shipment>/ecmr.pdf`). Each has an upload link (`POST`, `409` once stored) and a download link (`GET`, `404` before the upload). The location is reserved with the first upload link and kept on the record (`V12`), so routes and shipments from before need nothing. Without a store, `503 object-store-unavailable`.
+  Absorbs: `c503898`, `67c2c56` (the bucket created before the first link, links for the public address). Documents of WMS and reporting come when those records need one.
+  Done when: after the sync, the walkthrough uploads a signature through its link (`200`), a second link is `409`, the old link `412`, and the download returns the file.
 
 ## S8 — Events out and the analytics database
 

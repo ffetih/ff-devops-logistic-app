@@ -1,5 +1,7 @@
 package com.siose.ff.logistics.geo.api;
 
+import com.siose.ff.base.storage.DocumentTransfer;
+import com.siose.ff.logistics.geo.service.ProofOfDeliveryService;
 import com.siose.ff.logistics.geo.service.RoutePlanService;
 import com.siose.ff.logistics.geo.service.RoutePlanService.NewRoute;
 import com.siose.ff.logistics.geo.service.RoutePlanService.RoutePlanView;
@@ -22,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class RoutePlanController {
 
     private final RoutePlanService service;
+    private final ProofOfDeliveryService proofs;
 
-    public RoutePlanController(RoutePlanService service) {
+    public RoutePlanController(RoutePlanService service, ProofOfDeliveryService proofs) {
         this.service = service;
+        this.proofs = proofs;
     }
 
     /** Orders the stops and numbers the plan; the answer has the stops in driving order. */
@@ -42,5 +46,20 @@ public class RoutePlanController {
     @GetMapping("/{id}")
     public RoutePlanView get(@PathVariable UUID id) {
         return service.get(id);
+    }
+
+    /**
+     * Where the client PUTs the stop's signature, with the headers the answer names; valid 15
+     * minutes. Refused with 409 once a signature is stored: documents are written once.
+     */
+    @PostMapping("/{routeId}/stops/{stopId}/epod/upload-link")
+    public DocumentTransfer epodUploadLink(@PathVariable UUID routeId, @PathVariable UUID stopId) {
+        return proofs.uploadLink(routeId, stopId);
+    }
+
+    /** Where the client GETs the stop's signature; 404 until it is uploaded. */
+    @GetMapping("/{routeId}/stops/{stopId}/epod/download-link")
+    public DocumentTransfer epodDownloadLink(@PathVariable UUID routeId, @PathVariable UUID stopId) {
+        return proofs.downloadLink(routeId, stopId);
     }
 }

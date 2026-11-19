@@ -111,6 +111,7 @@ kubectl -n ff-logistics patch job <name> --type=merge -p '{"metadata":{"finalize
 ----
 History:: S06-03.
 
+[[smoke-dns]]
 === The smoke test cannot resolve the service
 
 Symptom:: `curl: (6) Could not resolve host: logistics-app.ff-logistics.svc.cluster.local` on the first check only; later checks to the same name pass.
@@ -175,10 +176,19 @@ History:: S06-09, S06-10.
 === An analysis run shows `✓ 3, ⚠ 1`
 
 Symptom:: The run is `Successful`, but `kubectl argo rollouts get rollout` shows one measurement with `⚠`.
-Check:: The run's measurements and their messages (<<first-look>>).
-Cause:: `⚠` is an error, not a failure: the measurement got no answer, so it says nothing about the release. Rollouts tolerates a few errors in a row (`consecutiveErrorLimit`, 4); a failure (`DOWN`) aborts at once. Here the message was `Client.Timeout exceeded while awaiting headers`: a call to a pod that the canary step was stopping, the same cause as the smoke test timeout above.
-Fix:: The graceful stop of S06-07. The 10 s wait before the first measurement (S05-06) stays; it does no harm.
-History:: S05-06, S05-08, S06-07.
+Check:: The run's measurements and their messages (<<first-look>>). Then time the lookups from the controller's namespace, relative and absolute:
++
+[source,bash]
+----
+kubectl -n argo-rollouts run dnsprobe --rm -i --image=curlimages/curl:8.22.0 --restart=Never -- sh -c '
+  U=logistics-app-canary.ff-logistics.svc.cluster.local
+  curl -s -o /dev/null -w "relative lookup %{time_namelookup}s total %{time_total}s\n" http://$U:8081/actuator/health/release
+  curl -s -o /dev/null -w "absolute lookup %{time_namelookup}s total %{time_total}s\n" http://$U.:8081/actuator/health/release'
+----
+Seconds for the relative name and well under one for the absolute name: the search list is slow.
+Cause:: `⚠` is an error, not a failure: the measurement got no answer, so it says nothing about the release. Rollouts tolerates a few errors in a row (`consecutiveErrorLimit`, 4); a failure (`DOWN`) aborts at once. Here the message was `Client.Timeout exceeded while awaiting headers`, always on the first measurement. The call comes from the Rollouts controller, and the URL named the canary Service as `…svc.cluster.local` without a trailing dot: 4 dots, fewer than `ndots: 5`, so the resolver tried the name with every search domain of the controller's pod first. Somewhere along that list the lookup leaves the cluster (most likely a search domain inherited from the host) and took 3–5 s, the whole timeout of a measurement. The same family as <<smoke-dns>>.
+Fix:: The AnalysisTemplate calls `…svc.cluster.local.:8081`; the trailing dot makes the name absolute and skips the search list. Any client that calls a Service of another namespace by its full name should do the same.
+History:: S05-06 and S05-08 blamed a cold JVM, S06-07 a stopping pod; both wrong. Found and fixed in S06-11.
 
 === The plugin cannot find `rollouts.argoproj.io`
 

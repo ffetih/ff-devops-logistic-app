@@ -187,6 +187,32 @@ Cause:: `GEO_ROAD_MATRIX=osrm`, and the OSRM server is not running, too slow (mo
 Fix:: Start OSRM or point `GEO_OSRM_URL` at it; start `osrm-routed` with `--max-table-size` of at least `GEO_MAX_STOPS` + 1; or go back to the estimate with `GEO_ROAD_MATRIX=haversine`. Nothing was stored, so the dispatcher sends the same plan again.
 History:: S07-02.
 
+[[documents]]
+== Documents
+
+=== Document links answer `503 object-store-unavailable`
+
+Symptom:: `…/epod/upload-link` or `…/ecmr/upload-link` (or `download-link`) answers 503 with `object-store-unavailable`.
+Check:: Whether the app has a store, and whether RustFS answers:
++
+[source,bash]
+----
+kubectl -n ff-logistics get rollout logistics-app -o yaml | grep -A1 'STORAGE_PROVIDER'
+argocd app get rustfs | grep -E 'Health|Sync Status'
+curl -s -o /dev/null -w '%{http_code}\n' localhost:9000/health
+kubectl -n ff-logistics logs -l app.kubernetes.io/name=logistics-app --tail=-1 | grep 'object store'
+----
+Cause:: `STORAGE_PROVIDER` is `reference-only` (no store: the default outside the cluster), the `rustfs` Application is not synced or not Healthy, or RustFS took longer than 10 s (`ff.storage.s3.timeout`). The warning names the SDK's cause, such as a refused connection.
+Fix:: Sync `rustfs` and wait for Healthy; from the IDE, set `STORAGE_PROVIDER=s3` and the credentials of `deploy/platform/rustfs/secret.yaml`. Nothing was reserved or stored in vain: ask for the link again.
+History:: S07-06.
+
+=== An upload through the link answers `403` or `412`
+
+Symptom:: The client's `PUT` to the presigned link fails: `403 SignatureDoesNotMatch` or `412 PreconditionFailed`.
+Cause:: `412`: the document is already stored; a document is written once, and this link was issued before the first upload. `403`: the request does not match what was signed: a header from the link's `headers` is missing or different (`Content-Type`, `If-None-Match: *`), the link is older than 15 minutes, or it was sent to another host than the one in the URL (the host is part of the signature, which is why links name `localhost:9000` and not `rustfs-svc:9000`).
+Fix:: `412`: nothing to do, the document is there; read it through a download link. `403`: ask for a new link and send exactly the headers it names.
+History:: S07-04, S07-06.
+
 [[rollouts]]
 == Argo Rollouts
 

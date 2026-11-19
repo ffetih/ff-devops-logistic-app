@@ -45,6 +45,17 @@
             <groupId>com.siose.ff</groupId>
             <artifactId>siose-ff-base-persistence</artifactId>
         </dependency>
+        <!-- Documents (e-POD, e-CMR): presigned links to an S3-compatible store. The library's S3
+             adapter is wired only with the AWS SDK on the classpath, hence the second entry. -->
+        <dependency>
+            <groupId>com.siose.ff</groupId>
+            <artifactId>siose-ff-base-storage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>

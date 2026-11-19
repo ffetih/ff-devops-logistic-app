@@ -632,6 +632,46 @@ curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" -H 'Content-Type: applicatio
 
 Kadikoy comes first, at minute 64. With `"dueMinutes": 50` no order works, and the answer is `400`.
 
+[[documents]]
+== Documents: proof of delivery and e-CMR
+
+Two documents belong to a record of this app: the consignee's signature at a route stop (the proof of delivery, e-POD, a PNG) and the signed e-CMR of a shipment (a PDF). They are stored in RustFS, an S3-compatible store, and the bytes never pass through the app: it signs a link, and the client sends the file to the store, or fetches it from there, directly. How the links work, and why each rule is there, is in the link:{url-platform-guide}#documents[Platform Guide].
+
+[cols="2,2,3",options="header"]
+|===
+| Document | Stored as | Links
+
+| Proof of delivery of a route stop | `<tenant>/epod/<route>-<stop>/signature.png`, `image/png` | `POST /api/v1/geo/routes/{routeId}/stops/{stopId}/epod/upload-link`, `GET …/epod/download-link`; `DISPATCHER` or `TENANT_ADMIN`
+| e-CMR of a shipment | `<tenant>/ecmr/<shipment>/ecmr.pdf`, `application/pdf` | `POST /api/v1/tms/shipments/{id}/ecmr/upload-link`, `GET …/ecmr/download-link`; `LOGISTICS_PLANNER` or `TENANT_ADMIN`
+|===
+
+* The location is reserved with the first upload link and kept on the record (`epod_document_uri`, `ecmr_document_uri`, `V12`); asking again before the upload gives a new link to the same place.
+* An upload link answers with `url`, `method` `PUT`, `validForSeconds` 900 and the `headers` the request must carry exactly: `Content-Type` and `If-None-Match: *`. Both are part of the signature.
+* Written once (`BR-DOC-01`): once the store holds the document, an upload link is refused with `409 document-already-stored`, and a link issued earlier gets `412` from the store. A wrong file needs the platform operator.
+* A download link before the upload: `404`. Without a store (`STORAGE_PROVIDER=reference-only`, the default outside the cluster) or with RustFS not answering: `503 object-store-unavailable`.
+
+=== Try it on the cluster
+
+With the token of the WMS walkthrough and the first route of the geo walkthrough. RustFS must be synced (`deploy/README.md`, RustFS):
+
+[source,bash]
+----
+ROUTE=$(curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" | python3 -c 'import json,sys; r=json.load(sys.stdin)[-1]; print(r["id"], r["stops"][0]["id"])')
+EPOD=localhost:8081/api/v1/geo/routes/${ROUTE% *}/stops/${ROUTE#* }/epod
+
+curl -s -X POST $EPOD/upload-link -H "$AUTH" > link.json; cat link.json; echo
+echo 'a pretend signature' > signature.png
+curl -s -o /dev/null -w "upload %{http_code}\n" -X PUT --data-binary @signature.png \
+  -H 'Content-Type: image/png' -H 'If-None-Match: *' "$(python3 -c 'import json; print(json.load(open("link.json"))["url"])')"
+
+curl -s -o /dev/null -w "second link %{http_code}\n" -X POST $EPOD/upload-link -H "$AUTH"     # 409
+curl -s -o /dev/null -w "old link %{http_code}\n" -X PUT --data-binary @signature.png \
+  -H 'Content-Type: image/png' -H 'If-None-Match: *' "$(python3 -c 'import json; print(json.load(open("link.json"))["url"])')"   # 412
+curl -s "$(curl -s $EPOD/download-link -H "$AUTH" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')"   # a pretend signature
+----
+
+The upload answers `200`, a second upload link `409`, the first link used again `412`, and the download returns the file. The console (`deploy/README.md`) shows it under `ff-documents/ff-eu-freight/epod/`.
+
 [[events]]
 == Events between modules
 

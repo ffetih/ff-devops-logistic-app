@@ -335,8 +335,10 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
 - [x] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
   The `rustfs` Application has three sources: the upstream chart (`https://charts.rustfs.com`, `rustfs` 1.0.6), this repository as `$values` for `deploy/platform/rustfs/values.yaml`, and `deploy/platform/rustfs` for the credentials Secret. One standalone pod in `ff-logistics`, Service `rustfs-svc`, S3 API on host port 9000 (NodePort 30900), a 2 Gi claim with Prune=false and Delete=false, logs to stdout. The project allows the chart repository. Wave -1 like postgres.
   Done when: `argocd app sync rustfs` turns Healthy and `curl localhost:9000/health` answers 200.
-- [ ] **S07-06 Issue presigned upload and download links**
-  Absorbs: `c503898`, `67c2c56`.
+- [x] **S07-06 Issue presigned upload and download links**
+  The logistics app uses the storage library with RustFS in the cluster (`STORAGE_PROVIDER=s3`, `rustfs-svc:9000` inside, links for `localhost:9000`, the keys from `rustfs-credentials`). Two documents: a route stop's proof of delivery (`epod/<route>-<stop>/signature.png`) and a shipment's e-CMR (`ecmr/<shipment>/ecmr.pdf`). Each has an upload link (`POST`, `409` once stored) and a download link (`GET`, `404` before the upload). The location is reserved with the first upload link and kept on the record (`V12`), so routes and shipments from before need nothing. Without a store, `503 object-store-unavailable`.
+  Absorbs: `c503898`, `67c2c56` (the bucket created before the first link, links for the public address). Documents of WMS and reporting come when those records need one.
+  Done when: after the sync, the walkthrough uploads a signature through its link (`200`), a second link is `409`, the old link `412`, and the download returns the file.
 
 ## S8 — Events out and the analytics database
 

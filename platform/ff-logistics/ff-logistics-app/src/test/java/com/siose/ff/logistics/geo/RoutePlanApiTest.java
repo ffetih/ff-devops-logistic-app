@@ -8,6 +8,7 @@ import static com.siose.ff.logistics.geo.GeoRequests.json;
 import static com.siose.ff.logistics.geo.GeoRequests.route;
 import static com.siose.ff.logistics.geo.GeoRequests.stop;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -102,6 +103,18 @@ class RoutePlanApiTest {
         plan(route("IST-EU", stop("IST-KDK", "Kadikoy Market", 40.99, 29.03, 400, 60, 30)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("The time window of stop IST-KDK ends before it starts"));
+    }
+
+    @Test
+    void noDocumentLinksWithoutAStore() throws Exception {
+        // The tests run with ff.storage.provider=reference-only, as an IDE run without RustFS does.
+        String body = plan(route("IST-EU", fourStops())).andReturn().getResponse().getContentAsString();
+        String epod = "/api/v1/geo/routes/" + JsonPath.read(body, "$.id") + "/stops/"
+                + JsonPath.read(body, "$.stops[0].id") + "/epod/upload-link";
+
+        mvc.perform(post(epod).with(as(tenant, "DISPATCHER")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.type").value("urn:siose-ff:problem:object-store-unavailable"));
     }
 
     @Test

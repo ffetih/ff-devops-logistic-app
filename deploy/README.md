@@ -370,6 +370,27 @@ kubectl -n ff-logistics logs $(kubectl -n ff-logistics get jobs -l app.kubernete
 
 The canary analysis and the smoke test answer different questions. The analysis asks one canary pod, before it takes more traffic, whether this release may go on; the smoke test asks the Service, after the release has all traffic, whether the API works end to end: token, identity, database. A canary that aborts never becomes Healthy, so the smoke test does not run on it.
 
+### Stopping a pod without dropping requests
+
+The smoke test after the S06-05 release failed on its first call with `curl: (28) Connection timed out after 10000 milliseconds`, and every later call passed; the canary analysis of every release had one measurement that hung the same way. Both ran while old pods were being stopped:
+
+```text
+Rollout scales the old ReplicaSet down → Kubernetes removes the pod from the Services and stops it
+                                           │
+kube-proxy on each node updates its rules ─┘ a moment later; until then, new connections still
+                                             go to the old pod's IP, where nothing listens any more
+```
+
+A connection to an address where no process listens is not refused, it gets no answer and hangs until its timeout. Any client calling during a rollout would lose requests the same way; the smoke test was only the first to notice. The chart therefore stops pods in two steps (`shutdown` in its values):
+
+```text
+preStop: sleep 10 s        the pod is out of the Services but still answers what the routing sends it
+SIGTERM                    Spring Boot's graceful shutdown finishes the requests in flight (up to 30 s)
+terminationGracePeriodSeconds: 45 covers both; after it, the pod is killed
+```
+
+Only pods started with this setting stop this way: the release that brings it still stops the old pods without it.
+
 To see it fail: in `values-local.yaml`, set `contains` of the token check on `/api/v1/me` to `"tenantId":"ff-tr-distribution"`, commit, sync. The pods do not change, so nothing rolls out; Argo CD applies the new ConfigMap, runs the Job, and the sync turns Failed with the failed check in the Job log. Revert and sync.
 
 ## Keycloak

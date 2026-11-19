@@ -14,6 +14,7 @@ spec:
   {{- end }}
   securityContext:
     {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  terminationGracePeriodSeconds: {{ .Values.shutdown.terminationGracePeriodSeconds }}
   containers:
     - name: {{ include "ff-service.name" . }}
       image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
@@ -48,6 +49,11 @@ spec:
           path: {{ .Values.probes.liveness }}
           port: http
         periodSeconds: {{ .Values.probes.livenessPeriodSeconds }}
+      # Keep answering while the routing learns that this pod is going (values: shutdown).
+      lifecycle:
+        preStop:
+          sleep:
+            seconds: {{ .Values.shutdown.preStopSleepSeconds }}
       resources:
         {{- toYaml .Values.resources | nindent 8 }}
       securityContext:

@@ -93,6 +93,8 @@ Its tables have no module prefix: the whole database is analytics.
 | Table | Rows
 
 | `shipment_deliveries` | One per delivered shipment: tenant, number, order reference, distance, CO~2~e saved, `delivered_at`, and `loaded_at`, when the loader stored it
+| `tenant_delivery_monthly` | One per tenant and month: delivered shipments, distance, CO~2~e saved, and `refreshed_at`, when it was last counted (<<rollup>>)
+| `delivery_month_changes` | The months whose figures are out of date: the rollup's to-do list. Readers do not see it.
 |===
 
 Every table has the same row-level security (<<rls>>).
@@ -147,6 +149,53 @@ select count(*) from shipment_deliveries;                    -- that tenant's de
 select set_config('app.all_tenants', 'on', false);           -- ERROR: permission denied for function set_config
 ----
 
+[[rollup]]
+== Per tenant and month: the rollup
+
+A dashboard asking "how many deliveries, how many kilometres, how much CO~2~e saved, per month" should not add up every delivery ever loaded each time it is opened. `tenant_delivery_monthly` holds the answer, one row per tenant and month, counted by the loader itself (`MonthlyDeliveryRollup`).
+
+The trick is a to-do list. Think of a ledger with a sticky note on every page that changed: the bookkeeper re-adds only the pages with a note, and takes the note off as he does.
+
+[plantuml,analytics-rollup,svg]
+----
+@startuml
+skinparam componentStyle rectangle
+[Kafka message] as msg
+database "analytics database" {
+  [shipment_deliveries] as d
+  [delivery_month_changes\n(to-do list)] as todo
+  [tenant_delivery_monthly] as m
+}
+[DeliveryStore] as store
+[MonthlyDeliveryRollup\nat start, then every 5 min] as rollup
+msg --> store
+store --> d : insert (once per shipment)
+store --> todo : mark its month,\nsame statement
+rollup --> todo : take the marks
+rollup --> d : recount those months
+rollup --> m : upsert the figures
+@enduml
+----
+
+* *The mark goes with the row.* One statement stores the delivery and marks its month (`with stored as (insert …) insert into delivery_month_changes …`). A delivery is never stored without its mark, and there is no clock to compare, so nothing slips between two runs. A delivery read twice is stored once and marks nothing.
+* *A run takes the marks and recounts in one statement* (`with changed as (delete … returning …) insert … on conflict do update`). If the run fails, the delete is rolled back with it, and the marks wait for the next run. Two runs at once cannot both take the same mark.
+* *A month is recounted, never added to.* The figures come from all of that month's rows each time, so a delivery for September read in November puts September right, and running twice changes nothing.
+* *A month is a UTC calendar month* (`DeliveryMonth`, the one place that says so, used by both statements). A delivery at 01:30 on 1 November in Istanbul is 22:30 UTC on 31 October: October. Local months would need each tenant's time zone, which the platform does not record yet.
+
+It runs once when the loader has started (so a new version's figures are there at once; `V3` marks every month that already had deliveries), then on `ANALYTICS_ROLLUP_CRON`, every five minutes. The cost follows what arrived since the last run, not the history. `rollUpAll()` rebuilds every month from every delivery: a repair, not the routine.
+
+[cols="2,4",options="header"]
+|===
+| Metric | Meaning
+
+| `analytics.rollup.pending` | Tenant-months marked and not recounted yet; drops to 0 at each run
+| `analytics.rollup.last.success` | When the figures were last brought up to date (epoch seconds; 0 = never since the start)
+| `analytics.rollup.months` | Tenant-months recounted, in total
+| `analytics.rollup.duration` | Time per run
+|===
+
+`tenant_delivery_monthly` has the same row-level security as the deliveries (<<rls>>), and `analytics_reader` may read it. `MonthlyDeliveryRollupTest` covers tenants and months apart, the UTC month boundary, a late delivery, a repeated one, and the repair.
+
 [[try-it]]
 == Try it on the cluster
 
@@ -156,6 +205,14 @@ After a delivery in the logistics app's walkthrough, the loader has stored it wi
 ----
 kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics_analytics -c \
   "select shipment_number, tenant_id, saved_co2e_kg, delivered_at, loaded_at from shipment_deliveries order by loaded_at desc limit 5"
+----
+
+The monthly figures, at most five minutes later (or at once after a restart of the loader):
+
+[source,bash]
+----
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics_analytics -c \
+  "select tenant_id, delivery_month, delivered_shipments, total_distance_km, saved_co2e_kg, refreshed_at from tenant_delivery_monthly order by 2 desc, 1"
 ----
 
 A broken message on purpose, then the dead-letter topic:

@@ -366,8 +366,10 @@ Goal: business events leave the logistics app through Kafka, from the same outbo
   `V2`: row-level security on `shipment_deliveries`, `ENABLE` and `FORCE`, one policy: a row is visible when its tenant is `app.tenant_id`, or when `app.all_tenants` is `on`; nothing set, nothing visible. A role `analytics_reader` (no superuser, no `BYPASSRLS`) gets `SELECT` and nothing else; its password comes from the `analytics-reader-credentials` Secret through a Flyway placeholder. The loader writes as the server's owner, above every policy. `set_config()` is revoked from `PUBLIC`, so a statement cannot widen its own scope half way. `RowLevelSecurityTest` connects as the reader: nothing without a tenant, one tenant, all tenants, no `set_config()`, no writes, no Flyway table.
   Absorbs: `0c69d59`, `V4`.
   Done when: after syncing `postgres` and the loader, `analytics_reader` sees 0 rows, then only the tenant it sets, and `set_config()` is refused.
-- [ ] **S08-05 Roll deliveries up per tenant and month**
+- [x] **S08-05 Roll deliveries up per tenant and month**
+  `V3`: `tenant_delivery_monthly` (tenant, UTC month, delivered shipments, distance, CO2e saved) and `delivery_month_changes`, the to-do list of months whose figures are out of date, both under the `V2` policy; the reader may read the figures. `DeliveryStore` marks a delivery's month in the statement that stores it. `MonthlyDeliveryRollup` takes the marks and recounts their months from all their deliveries in one statement, at the start and every five minutes (`ANALYTICS_ROLLUP_CRON`); `rollUpAll()` rebuilds every month. `V3` marks the months loaded before it. Metrics `analytics.rollup.*`. `MonthlyDeliveryRollupTest`: tenants and months apart, the UTC boundary, a late and a repeated delivery, the repair.
   Absorbs: `85ec349`, `d2361f8`, `V5`.
+  Done when: after the loader's sync, a delivery made in the walkthrough appears in `tenant_delivery_monthly` within five minutes, and `delivery_month_changes` is empty again.
 
 ## S9 — Reporting and Superset
 

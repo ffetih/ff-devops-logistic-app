@@ -258,6 +258,13 @@ Symptom:: Deliveries do not reach `shipment_deliveries`; the loader's log repeat
 Check:: `kubectl -n ff-logistics logs deploy/analytics-loader --tail=50`, and the lag: `kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group ff-analytics-loader`.
 Cause:: Not a broken message but something that can be fixed: usually the analytics database is down or unreachable. The loader waits on that partition, 1 s doubling up to 30 s, without end, on purpose: skipping would lose deliveries.
 Fix:: Bring the database back; the loader continues by itself where it stopped, and the lag drains. A restart is not needed.
+
+=== The monthly figures stay behind the deliveries
+
+Symptom:: `tenant_delivery_monthly` lacks deliveries that are in `shipment_deliveries`; `analytics.rollup.pending` stays above 0, or `analytics.rollup.last.success` stops moving.
+Check:: `kubectl -n ff-logistics logs deploy/analytics-loader | grep -i rollup`, and the to-do list: `kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics_analytics -c "select * from delivery_month_changes"`.
+Cause:: The rollup runs every five minutes; until then, figures behind by a few minutes are normal. Longer: its statement fails, usually because the database was away. A failed run keeps its marks, so nothing is lost.
+Fix:: Bring the database back; the next run recounts every marked month. A restart of the loader runs it at once. If the figures are wrong rather than late (a manual change in `shipment_deliveries`), call the repair, `rollUpAll()`, or delete the month's row and insert its mark into `delivery_month_changes`.
 History:: S08-03.
 
 [[rollouts]]

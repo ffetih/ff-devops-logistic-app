@@ -3,6 +3,7 @@ package com.siose.ff.analytics.loader;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Loads business events from Kafka into the analytics database ({@code ff_logistics_analytics}).
@@ -11,8 +12,11 @@ import org.springframework.context.ConfigurableApplicationContext;
  * <p>Like the logistics app, the image has two jobs: normally it consumes; with the {@code migrate}
  * profile (the Argo CD PreSync hook) it starts without web server or consumers, lets Flyway
  * migrate, and exits.
+ *
+ * <p>{@code @EnableScheduling}: the monthly rollup runs on a schedule ({@link MonthlyDeliveryRollup}).
  */
 @SpringBootApplication
+@EnableScheduling
 public class AnalyticsLoaderApplication {
 
     public static void main(String[] args) {

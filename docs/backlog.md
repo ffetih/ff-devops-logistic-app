@@ -262,7 +262,7 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 | B | S06-03 … S06-06 | The lifecycle: pickup, departure, delivery; two deliveries at once give one success and one `409`; one shipment per customer order number |
 | fix | S06-07 | A release no longer drops calls to the pods it stops: the smoke test passes after a canary, and the analysis has no error measurement |
 | docs | S06-08 | The Operations Guide: where to look first, and every problem met so far with its cause and fix |
-| C | S06-09 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
+| C | S06-09 … S06-10 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
 
 - [x] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
   The `tms` module and its first tables (`V4__tms_init.sql`): a shipment numbered from `tms_shipment_seq` (`SHP-10001`, e-CMR `ECMR-10001`), with consignor, consignee, an ISO 6346 equipment code, the SSCC it carries and an Incoterm, and its legs in order. The legs must form one chain from origin to destination. The EN 16258 footprint from `standards` is calculated when the shipment is planned and kept. The smoke test now also lists shipments.
@@ -292,8 +292,14 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 - [x] **S06-08 Start an Operations Guide**
   A guide for whoever runs the cluster: a "first look" set of commands, what Synced, Healthy and Sync failed each mean, and every problem met on this cluster so far (Argo CD, hooks, Rollouts, Keycloak, CI, the workstation), each as symptom, check, cause, fix and the backlog item that dealt with it. New problems get their entry with the item that fixes them.
   Done when: the docs site lists the Operations Guide, and each problem of S0–S6 has an entry.
-- [ ] **S06-09 Publish ShipmentDelivered through the event publication registry**
-  Absorbs: `2019e11`, `V7`, `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup), `59d8170` (listener concurrency).
+- [x] **S06-09 Publish ShipmentDelivered through the event publication registry**
+  `ShipmentDelivered` (TMS base package) is published in the delivery's transaction; Spring Modulith's JDBC registry writes it to `event_publication` (`V8`) with the shipment's update, both or neither. The first listener is the new `reporting` module: after the commit, on its own thread, it binds the tenant from the event and records the shipment in `rep_shipment_deliveries` (`V9`), idempotently. `GET /api/v1/reporting/deliveries` shows them; the smoke test reads it. Listeners are capped at 16 at a time. Against PostgreSQL, four parallel confirmations leave one delivered shipment and one completed event.
+  Absorbs: `2019e11`, `V7`, `59d8170` (listener concurrency).
+  Done when: a delivery in the walkthrough appears under `/api/v1/reporting/deliveries`, and its `event_publication` row is `COMPLETED`.
+- [x] **S06-10 Resubmit unfinished events from one pod**
+  The new technical module `outbox` publishes unfinished events again every 30 s. A PostgreSQL advisory lock lets one pod run it at a time; the others skip. `EventRetryPolicy`: the wait doubles from 1 min to 1 h, at most 5 attempts, then the row stays open, counted in the gauge `logistics.events.publications.exhausted`. Rows a stopped pod left behind turn `FAILED` after 5 min (staleness). Completed rows are deleted after 7 days. Not in the `migrate` profile. Tests: a failing listener gets its event again, and stops after the maximum; against PostgreSQL, a run skips while another session holds the lock. The Operations Guide says what to do with a row that stopped retrying.
+  Absorbs: `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup).
+  Done when: the tests pass in CI, and in the cluster `event_publication` holds no open rows a few minutes after the walkthrough's delivery.
 
 ## S7 — Geo and documents
 

@@ -18,7 +18,7 @@ The app is a modular monolith. Spring Modulith treats every top-level package un
 
 * *The base package is the module's API.* Other modules may use the public types in `com.siose.ff.logistics.<module>`; its sub-packages (`api`, `domain`, `service`) are internal.
 * *Dependencies are declared.* `package-info.java` lists the modules it may use in `@ApplicationModule(allowedDependencies = ...)`. Anything else fails the build.
-* *No cycles.* If two modules need each other, one of them publishes an event instead (S6).
+* *No cycles.* If two modules need each other, one of them publishes an event instead (<<events>>).
 
 A module that keeps these rules can later move into a service of its own without untangling it from the rest: its callers already use only its API.
 
@@ -33,12 +33,11 @@ package "logistics-app" {
   [wms] as wms
   [tms] as tms
   [geo (S7)] as geo
-  [reporting (S9)] as reporting
+  [reporting] as reporting
 }
 wms --> standards
 tms --> standards
 geo --> standards
-reporting --> standards
 reporting ..> tms : events
 @enduml
 ----
@@ -52,6 +51,7 @@ reporting ..> tms : events
 | `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions (<<standards>>)
 | `wms` | `standards` | Warehouses, bin locations, inbound ASNs (<<wms>>)
 | `tms` | `standards` | Shipments with their legs, e-CMR number and CO~2~e footprint (<<tms>>)
+| `reporting` | `tms` (its events only) | Its own copy of delivered shipments, filled from `ShipmentDelivered` (<<events>>)
 |===
 
 The base libraries (`siose-ff-base-*`) are not modules of the app; every module may use them.
@@ -441,6 +441,104 @@ for driver in A B C D; do      # four confirmations at once: one 200, the others
   curl -s -o /dev/null -w "%{http_code} " localhost:8081/api/v1/tms/shipments/$SHP/delivery -H "$AUTH" \
     -H 'Content-Type: application/json' -d '{"receivedBy": "Driver '$driver'"}' &
 done; wait; echo
+----
+
+[[events]]
+== Events between modules
+
+When something happens in one module that another cares about, the first publishes an event and does not know who listens. TMS publishes `ShipmentDelivered` when a consignee signs; reporting listens and keeps its own record of delivered shipments. TMS calls nothing in reporting, and reporting reads no TMS table: `ModularityTest` allows `reporting` to use `tms` for its events only, which are the records in the `tms` base package.
+
+=== The outbox: an event cannot get lost
+
+The event must not get lost, and must not be sent for a delivery that did not happen. Spring Modulith's event publication registry gives both, by writing the event into the database in the same transaction as the change:
+
+[plantuml,shipment-delivered,svg]
+----
+@startuml
+participant "POST …/delivery" as api
+participant "TMS\nShipmentService" as tms
+database "PostgreSQL" as db
+participant "reporting\nlistener (async)" as rep
+api -> tms : deliver
+activate tms
+tms -> db : UPDATE tms_shipments … status DELIVERED, version+1
+tms -> db : INSERT event_publication\n(ShipmentDelivered as JSON, listener, PUBLISHED)
+tms -> db : COMMIT  (both, or neither)
+deactivate tms
+tms --> api : 200
+db -> rep : after the commit, on its own thread
+activate rep
+rep -> db : INSERT rep_shipment_deliveries (unless already there)
+rep -> db : event_publication: COMPLETED
+deactivate rep
+@enduml
+----
+
+* *Both or neither.* The event row commits with the delivery. A confirmation that loses on the version (<<delivered-once>>) is rolled back with its event, so four parallel confirmations leave one delivered shipment and one event.
+* *Committed means it will arrive.* The listener runs after the commit, on a thread of its own, and the row stays open until it has succeeded. If the listener throws, or the pod stops first, the row stays open and the event is delivered again (<<resubmission>>).
+* *At least once, so recorded once.* An event can therefore arrive twice. Reporting ignores a shipment it already has, and the table has a unique `shipment_id` besides.
+* *The event carries what the listener needs*, including the tenant: a listener has no request and so no tenant of its own. It binds the tenant from the event before its transaction starts.
+
+[source,sql]
+----
+-- what the registry has, newest first: one row per event and listener
+select listener_id, status, completion_attempts, publication_date, completion_date
+from event_publication order by publication_date desc limit 10;
+----
+
+`ShipmentDelivered` is stored as JSON until it is handled, possibly across a release: fields may be added to it, never renamed or removed.
+
+[[resubmission]]
+=== Events a listener has not handled
+
+A row that stays open is an event still owed to a listener. The `outbox` module, a technical module of its own, publishes such events again:
+
+[source,text]
+----
+listener throws                      → row FAILED at once
+pod stopped while the listener ran   → row stays PUBLISHED / PROCESSING,
+                                       turns FAILED after 5 min (spring.modulith.events.staleness.*)
+
+every 30 s, in every pod:
+  pg_try_advisory_lock(5105000001)   → only one pod gets it; the others skip this run
+  FAILED rows that are due           → published again; the listener runs again
+  pg_advisory_unlock
+----
+
+[cols="2,3",options="header"]
+|===
+| Rule | Why
+
+| One pod at a time, by a PostgreSQL advisory lock | Four pods run the same schedule. Without the lock, all four would publish the same row at once, and the listener would run four times.
+| The wait doubles: 1 min, 2, 4, 8, up to 1 h (`EventRetryPolicy`) | A listener that fails because something it needs is down gets time; a quick retry would fail the same way.
+| At most 5 attempts, then the row stays open | A listener that keeps failing has a bug or bad data. Retrying forever only adds load; the gauge `logistics.events.publications.exhausted` and a warning in the log say a person is needed.
+| Not at a pod's start (`republish-outstanding-events-on-restart: false`) | Every pod would publish everything open at its start.
+| Completed rows are deleted after 7 days | The table would otherwise grow with every event.
+|===
+
+The settings are in `application.yml` under `logistics.events` and `spring.modulith.events`; the cluster can override them by environment (`EVENTS_RESUBMIT_DELAY`, `EVENTS_MAX_ATTEMPTS`, `EVENTS_STALE_AFTER`). What to do with a row that stopped retrying is in the Operations Guide.
+
+=== Listeners do not run without limit
+
+Listeners run on virtual threads, on an executor that has no limit by default. A burst of deliveries would start every listener at once, all waiting for one of the ten database connections. `spring.task.execution.simple.concurrency-limit` (16, `TASK_EXECUTION_CONCURRENCY_LIMIT`) caps them; above it, the publisher waits for a free slot.
+
+[[reporting]]
+== Reporting
+
+Reporting keeps figures across the modules in tables of its own (`rep_`), filled from their events. For now, the delivered shipments.
+
+[cols="2,4,3",options="header"]
+|===
+| Request | Does | Refused with
+
+| `GET /api/v1/reporting/deliveries` | The tenant's delivered shipments as reporting recorded them, newest first: number, order number, distance, CO~2~e saved, delivery time | `403` without `REPORT_VIEWER` or `TENANT_ADMIN`
+|===
+
+After the TMS walkthrough's delivery, the shipment shows up here within a moment:
+
+[source,bash]
+----
+curl -s localhost:8081/api/v1/reporting/deliveries -H "$AUTH"; echo
 ----
 
 [[roles]]

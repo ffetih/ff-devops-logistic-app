@@ -37,10 +37,8 @@ class CustomerOrderReferenceTest {
 
     private final String tenant = newTenant();
 
-    /** The test shipment, booked under a customer order number. */
     static String order(String reference) {
-        return shipment(CONTAINER, SSCC, "Cologne Eifeltor")
-                .replaceFirst("\\{", "{\"customerOrderReference\": \"" + reference + "\", ");
+        return TmsRequests.order(reference);
     }
 
     private ResultActions plan(String body, String caller) throws Exception {

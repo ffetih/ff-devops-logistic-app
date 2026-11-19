@@ -70,11 +70,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
-        <!-- @ApplicationModule in each module's package-info.java, nothing at runtime. The
-             starters (event publication registry and the rest) come when a module needs them. -->
+        <!-- @ApplicationModule in each module's package-info.java, and the event publication
+             registry: events between modules are written to event_publication in the
+             publishing transaction (JDBC), as JSON (Jackson). -->
         <dependency>
             <groupId>org.springframework.modulith</groupId>
-            <artifactId>spring-modulith-api</artifactId>
+            <artifactId>spring-modulith-starter-jdbc</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -106,19 +107,21 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- ModularityTest: module verification (core) and the generated diagrams (docs).
-             Plain libraries, no auto-configuration in any Spring test context. -->
-        <dependency>
-            <groupId>org.springframework.modulith</groupId>
-            <artifactId>spring-modulith-core</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!-- ModularityTest: the generated diagrams (Documenter); spring-modulith-core comes with
+             the starter above. -->
         <dependency>
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-docs</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Waiting in tests for what an event listener does on its own thread -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Most tests run on an in-memory database -->
+
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

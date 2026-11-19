@@ -97,6 +97,9 @@ logistics:
   geo:
     max-stops: ${GEO_MAX_STOPS:99}                      # BR-GEO-07: a longer list is refused before any work
     road-matrix: ${GEO_ROAD_MATRIX:haversine}           # haversine (straight line x 1.24) or osrm
+    nearest-neighbour-max-stops: 8                      # longer lists, and any time window: Timefold
+    solver-unimproved-limit: PT0.2S                     # Timefold stops when its best order stays this long
+    solver-limit: PT1S                                  # and at the latest after this
     osrm:
       base-url: ${GEO_OSRM_URL:http://localhost:5000}   # --max-table-size must fit max-stops + 1
       connect-timeout: PT2S

@@ -38,8 +38,13 @@ public class RouteStop extends TenantAwareEntity {
     /** From the depot for the first stop, from the stop before for the others. */
     private double legDistanceKm;
 
-    /** Minutes after departure; service starts here. */
+    /** Minutes after departure; service starts here, after a wait if the vehicle came early. */
     private int arrivalMinutes;
+
+    /** The time window, in minutes after departure; both null for a stop without one. */
+    private Integer readyMinutes;
+
+    private Integer dueMinutes;
 
     protected RouteStop() {
     }
@@ -54,6 +59,8 @@ public class RouteStop extends TenantAwareEntity {
         this.serviceMinutes = stop.serviceMinutes();
         this.legDistanceKm = legDistanceKm;
         this.arrivalMinutes = arrivalMinutes;
+        this.readyMinutes = stop.readyMinutes();
+        this.dueMinutes = stop.dueMinutes();
     }
 
     public UUID getId() {
@@ -94,5 +101,13 @@ public class RouteStop extends TenantAwareEntity {
 
     public int getArrivalMinutes() {
         return arrivalMinutes;
+    }
+
+    public Integer getReadyMinutes() {
+        return readyMinutes;
+    }
+
+    public Integer getDueMinutes() {
+        return dueMinutes;
     }
 }

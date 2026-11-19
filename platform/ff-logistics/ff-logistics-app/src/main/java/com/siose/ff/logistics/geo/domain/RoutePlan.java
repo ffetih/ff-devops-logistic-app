@@ -73,9 +73,18 @@ public class RoutePlan extends TenantAwareEntity {
             double capacityKg, double averageSpeedKmh) {
     }
 
-    /** A stop as requested, in any order. */
+    /**
+     * A stop as requested, in any order.
+     *
+     * @param readyMinutes earliest arrival, in minutes after departure; with {@code dueMinutes} or not at all
+     * @param dueMinutes   latest arrival; the vehicle waits if it is early, and may not be late
+     */
     public record Stop(String stopCode, String customerName, double latitude, double longitude,
-            double demandWeightKg, int serviceMinutes) {
+            double demandWeightKg, int serviceMinutes, Integer readyMinutes, Integer dueMinutes) {
+
+        public boolean hasTimeWindow() {
+            return readyMinutes != null;
+        }
     }
 
     /** A stop in driving order, with what the planner worked out for it. */
@@ -83,19 +92,27 @@ public class RoutePlan extends TenantAwareEntity {
     }
 
     /**
-     * Checks the stops before anything is planned: every code once ({@code BR-GEO-06}), and no
-     * more load than the vehicle carries ({@code BR-GEO-03}).
+     * Checks the stops before anything is planned: every code once ({@code BR-GEO-06}), no more
+     * load than the vehicle carries ({@code BR-GEO-03}), and time windows that are whole
+     * ({@code BR-GEO-04}).
      *
      * <p>Codes are compared the way a file name is made from them: lower case, and anything other
      * than letters, digits and hyphens as a hyphen. Each stop's proof of delivery is filed under
      * its code (S07-06), so {@code STOP_1}, {@code stop 1} and {@code STOP-1} are one code.
      *
-     * @throws IllegalArgumentException naming the first clash, or the load and the capacity
+     * @throws IllegalArgumentException naming the first clash, the load and the capacity, or the
+     *                                  stop whose time window is half or ends before it starts
      */
     public static void checkStops(List<Stop> stops, double capacityKg) {
         Map<String, String> seen = new HashMap<>();
         for (Stop stop : stops) {
             String code = stop.stopCode().trim();
+            if ((stop.readyMinutes() == null) != (stop.dueMinutes() == null)) {
+                throw new IllegalArgumentException("Stop " + code + " needs both readyMinutes and dueMinutes, or neither");
+            }
+            if (stop.hasTimeWindow() && stop.dueMinutes() < stop.readyMinutes()) {
+                throw new IllegalArgumentException("The time window of stop " + code + " ends before it starts");
+            }
             String earlier = seen.putIfAbsent(fileKey(code), code);
             if (earlier != null) {
                 throw new IllegalArgumentException(earlier.equals(code)

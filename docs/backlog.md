@@ -323,8 +323,10 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
   With `GEO_ROAD_MATRIX=osrm`, the route planner takes distances and drive times from an OSRM server's table service, one request per route, instead of the estimate. Connect and read timeouts (2 s, 5 s); the coordinates written into the path unencoded; no compressed answers. No server, a timeout, a refused table or a point without a road answer `503 road-matrix-unavailable` and store nothing. The cluster keeps the estimate: OSRM needs a prepared map; the guide shows how to run one for the IDE.
   Absorbs: `59d8170` (OSRM timeouts), the OSRM client fixes of `b851603` (coordinates not URL-encoded, no compressed answers). The road lines for a map (`roadLegs`) come with the map in S10-04.
   Done when: the tests against a stand-in OSRM pass in CI: the matrix read in km and minutes, the path unencoded, and 503 for each failure, a stalled server within the timeout.
-- [ ] **S07-03 Order routes with time windows using Timefold**
-  Absorbs: `da10b36`, `0a4b9c0`.
+- [x] **S07-03 Order routes with time windows using Timefold**
+  A stop may have a time window, `readyMinutes` and `dueMinutes` after departure (`V11`, both or neither). A vehicle that comes early waits. Up to 8 stops without windows keep nearest neighbour; any window, or more stops, go to Timefold: one tour, hard one point per minute late, soft one point per metre. It stops after 0.2 s without improvement, at the latest after 1 s. Late in the best order found: `400`. Timefold 2.8.0 is managed in the base BOM.
+  Absorbs: `da10b36`, `0a4b9c0` (unimproved limit, version in the BOM).
+  Done when: after the sync, the hook has applied `V11`, and the walkthrough's two-stop route with a window at Kadikoy comes back Kadikoy first, at minute 64.
 - [ ] **S07-04 Add the storage library**
   Port: `base/ff-base-storage`.
   Absorbs: `d0f3003` (write once), `4e28bff` (document links).

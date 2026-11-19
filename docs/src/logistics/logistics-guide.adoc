@@ -480,6 +480,7 @@ class RouteStop {
   stopCode, customerName
   latitude, longitude
   demandWeightKg, serviceMinutes
+  {field} readyMinutes, dueMinutes : time window, optional
   {field} legDistanceKm : from the stop before
   {field} arrivalMinutes : after departure
 }
@@ -490,7 +491,7 @@ RoutePlan "1" *-- "1..*" RouteStop : in driving order
 
 Territory:: The area one hub serves: a circle around a centre, with the delivery points in it and the visits a week they need. The hub's GLN must have a valid check digit (`BR-GEO-01`). The workload balance score is 70, plus up to 20 for density (points per km of radius) and up to 10 for visit frequency (5 per weekly visit per point), at most 100 (`BR-GEO-02`).
 Route plan:: One vehicle's tour from a depot, numbered `RTE-…`. It belongs to a territory of the tenant, by code. The tour ends at the last stop: the way back to the depot is not part of it.
-Route stop:: A delivery point, with the load it takes off the vehicle and how long the vehicle stays. The plan gives it its place in the order, the distance from the stop before and the arrival time, in minutes after departure.
+Route stop:: A delivery point, with the load it takes off the vehicle, how long the vehicle stays and, if the customer has one, a time window: the earliest and the latest arrival in minutes after departure. The plan gives it its place in the order, the distance from the stop before and the arrival time, in minutes after departure.
 
 === Planning a route
 
@@ -501,10 +502,19 @@ start
 :at most 99 stops? (BR-GEO-07);
 note right: before any work: ordering grows\nwith the square of the list
 :the territory exists for this tenant?;
-:every stop code once? (BR-GEO-06)\nload within the capacity? (BR-GEO-03);
+:every stop code once? (BR-GEO-06)\nload within the capacity? (BR-GEO-03)\ntime windows whole?;
 :road distances and drive times\nbetween every pair of points (BR-GEO-05);
-:order the stops (BR-GEO-04);
-:arrival at each stop:\nthe stop before + its service + the drive;
+if (a time window, or more than 8 stops?) then (yes)
+  :Timefold: every stop on time,\nthen the shortest distance;
+  if (every stop on time?) then (no)
+    :400;
+    stop
+  else (yes)
+  endif
+else (no)
+  :nearest neighbour;
+endif
+:arrival at each stop: the stop before\n+ its service + the drive, waiting\nfor a window that is not open yet;
 :number the plan, save it;
 stop
 @enduml
@@ -514,8 +524,27 @@ Each check that fails answers `400` and names what is wrong. A refused plan take
 
 Stop codes (`BR-GEO-06`):: Each stop's proof of delivery will be filed under its code (S07-06). Codes are compared as a file name is made from them, in lower case and with anything other than letters, digits and hyphens as a hyphen, so `STOP_1`, `stop 1` and `STOP-1` are one code and refused together.
 Road distance (`BR-GEO-05`):: The straight line between two points times 1.24, the usual detour factor for road freight in Europe, and the drive time at the requested average speed (10 to 130 km/h), rounded up to whole minutes. With an OSRM server configured, distance and drive time come from the road network instead (<<osrm>>).
-Order (`BR-GEO-04`):: Nearest neighbour: from the depot, always to the closest stop not yet visited. Fast, and for a van's few stops usually close to the best order.
+Order (`BR-GEO-04`):: Up to 8 stops and no time window: nearest neighbour, from the depot always to the closest stop not yet visited. Otherwise Timefold (<<time-windows>>). A vehicle that arrives before a window opens waits; one that would arrive after it closes is not allowed.
 Limit (`BR-GEO-07`):: `GEO_MAX_STOPS`, 99 by default.
+
+[[time-windows]]
+=== Time windows: Timefold
+
+Nearest neighbour looks one stop ahead. With time windows that is not enough: a far stop that closes early has to come first, although a near one is waiting.
+https://timefold.ai[Timefold] searches orders instead: it builds one, then keeps changing it (moving a stop, swapping two, reversing a stretch) and keeps a change when the score improves.
+
+[cols="1,2,3",options="header"]
+|===
+| Level | Penalty | Means
+
+| Hard | One point per minute any stop is late | Any on-time order beats every late one
+| Soft | One point per metre of road | Among on-time orders, the shortest wins
+|===
+
+The score is calculated with the same clock as the plan: drive, wait if early, serve, drive on (`Tour.latenessMinutes`).
+If the best order the solver finds is still late, the route is refused with `400`: no order of these stops keeps every window, or none that the solver found.
+
+The solver stops when its best order has not improved for 0.2 s (`solver-unimproved-limit`), and at the latest after 1 s (`solver-limit`). A small route is answered in a fraction of a second; a hard one cannot hold the request longer. Lists over 8 stops go to Timefold too, without windows: there nearest neighbour's mistakes add up.
 
 [[osrm]]
 === Road distances from OSRM
@@ -587,6 +616,21 @@ curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" -H 'Content-Type: applicatio
 ----
 
 The territory scores 92.0. The four stops come back in the reverse of the order they were sent, Esenyurt first, arriving at minutes 15, 63, 104 and 131; 56.17 km and 146 minutes in all.
+
+Now let Kadikoy take deliveries only until minute 70. Driving there first arrives at 64; Esenyurt first would arrive at 87:
+
+[source,bash]
+----
+curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "territoryCode": "IST-EU", "vehiclePlate": "34 FF 0417", "depotLatitude": 41.10, "depotLongitude": 28.65,
+  "vehicleCapacityKg": 3500, "averageSpeedKmh": 40, "stops": [
+    {"stopCode": "IST-ESN", "customerName": "Esenyurt Depot Shop", "latitude": 41.03, "longitude": 28.67, "demandWeightKg": 200, "serviceMinutes": 15},
+    {"stopCode": "IST-KDK", "customerName": "Kadikoy Market", "latitude": 40.99, "longitude": 29.03, "demandWeightKg": 400, "serviceMinutes": 15,
+     "readyMinutes": 0, "dueMinutes": 70}]}' \
+  | python3 -c 'import json,sys; r=json.load(sys.stdin); [print(s["sequenceNo"], s["stopCode"], s["arrivalMinutes"]) for s in r["stops"]]'
+----
+
+Kadikoy comes first, at minute 64. With `"dueMinutes": 50` no order works, and the answer is `400`.
 
 [[events]]
 == Events between modules

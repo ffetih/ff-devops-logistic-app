@@ -46,6 +46,13 @@ public final class GeoRequests {
                 stop("IST-ESN", "Esenyurt Depot Shop", 41.03, 28.67, 200));
     }
 
+    /** A stop with a time window, in minutes after departure. */
+    public static String stop(String code, String customer, double latitude, double longitude, double demandKg,
+            Integer readyMinutes, Integer dueMinutes) {
+        return stop(code, customer, latitude, longitude, demandKg)
+                .replace("}", ", \"readyMinutes\": " + readyMinutes + ", \"dueMinutes\": " + dueMinutes + "}");
+    }
+
     public static String stop(String code, String customer, double latitude, double longitude, double demandKg) {
         return """
                 {"stopCode": "%s", "customerName": "%s", "latitude": %s, "longitude": %s,

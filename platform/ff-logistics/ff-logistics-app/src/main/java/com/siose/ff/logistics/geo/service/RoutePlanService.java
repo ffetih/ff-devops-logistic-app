@@ -64,7 +64,9 @@ public class RoutePlanService {
             @NotNull @DecimalMin("-90") @DecimalMax("90") Double latitude,
             @NotNull @DecimalMin("-180") @DecimalMax("180") Double longitude,
             @NotNull @Positive Double demandWeightKg,
-            @NotNull @PositiveOrZero @Max(600) Integer serviceMinutes) {
+            @NotNull @PositiveOrZero @Max(600) Integer serviceMinutes,
+            @PositiveOrZero @Max(1440) Integer readyMinutes,
+            @PositiveOrZero @Max(1440) Integer dueMinutes) {
     }
 
     public record RoutePlanView(UUID id, String tenantId, String routeNumber, String territoryCode,
@@ -74,13 +76,15 @@ public class RoutePlanService {
     }
 
     public record StopView(UUID id, int sequenceNo, String stopCode, String customerName, double latitude,
-            double longitude, double demandWeightKg, int serviceMinutes, double legDistanceKm, int arrivalMinutes) {
+            double longitude, double demandWeightKg, int serviceMinutes, Integer readyMinutes, Integer dueMinutes,
+            double legDistanceKm, int arrivalMinutes) {
     }
 
     /**
      * Checks first what is cheap and does not depend on the order: the number of stops
      * ({@code BR-GEO-07}, before anything else, because ordering takes work that grows with the
-     * square of the list), the territory, the stop codes and the load. Then orders and numbers.
+     * square of the list), the territory, the stop codes, the load and the time windows. Then
+     * orders and numbers.
      */
     @Transactional
     public RoutePlanView plan(NewRoute request) {
@@ -94,14 +98,15 @@ public class RoutePlanService {
         }
         List<RoutePlan.Stop> stops = request.stops().stream()
                 .map(stop -> new RoutePlan.Stop(stop.stopCode(), stop.customerName(), stop.latitude(),
-                        stop.longitude(), stop.demandWeightKg(), stop.serviceMinutes()))
+                        stop.longitude(), stop.demandWeightKg(), stop.serviceMinutes(), stop.readyMinutes(),
+                        stop.dueMinutes()))
                 .toList();
         RoutePlan.checkStops(stops, request.vehicleCapacityKg());
 
         PlannedRoute route = planner.plan(new Location(request.depotLatitude(), request.depotLongitude()),
                 stops.stream()
                         .map(stop -> new RoutePlanner.Visit(new Location(stop.latitude(), stop.longitude()),
-                                stop.serviceMinutes()))
+                                stop.serviceMinutes(), stop.readyMinutes(), stop.dueMinutes()))
                         .toList(),
                 request.averageSpeedKmh());
 
@@ -137,7 +142,7 @@ public class RoutePlanService {
 
     private static StopView view(RouteStop s) {
         return new StopView(s.getId(), s.getSequenceNo(), s.getStopCode(), s.getCustomerName(), s.getLatitude(),
-                s.getLongitude(), s.getDemandWeightKg(), s.getServiceMinutes(), s.getLegDistanceKm(),
-                s.getArrivalMinutes());
+                s.getLongitude(), s.getDemandWeightKg(), s.getServiceMinutes(), s.getReadyMinutes(), s.getDueMinutes(),
+                s.getLegDistanceKm(), s.getArrivalMinutes());
     }
 }

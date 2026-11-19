@@ -73,6 +73,38 @@ class RoutePlanApiTest {
     }
 
     @Test
+    void meetsTheTimeWindows() throws Exception {
+        // Kadikoy takes deliveries until minute 70. Straight there arrives at 64; Esenyurt first
+        // would arrive at 15 + 15 + 57 = 87.
+        plan(route("IST-EU", stop("IST-ESN", "Esenyurt Depot Shop", 41.03, 28.67, 200) + ","
+                + stop("IST-KDK", "Kadikoy Market", 40.99, 29.03, 400, 0, 70)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.stops[*].stopCode").value(Matchers.contains("IST-KDK", "IST-ESN")))
+                .andExpect(jsonPath("$.stops[0].readyMinutes").value(0))
+                .andExpect(jsonPath("$.stops[0].dueMinutes").value(70))
+                .andExpect(jsonPath("$.stops[0].arrivalMinutes").value(64))
+                .andExpect(jsonPath("$.stops[1].arrivalMinutes").value(64 + 15 + 57))
+                .andExpect(jsonPath("$.stops[1].readyMinutes").doesNotExist());
+    }
+
+    @Test
+    void refusesWindowsNoOrderCanMeet() throws Exception {
+        plan(route("IST-EU", stop("IST-KDK", "Kadikoy Market", 40.99, 29.03, 400, 0, 20)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("No order of the stops keeps every stop inside its time window"));
+    }
+
+    @Test
+    void refusesHalfAWindow() throws Exception {
+        plan(route("IST-EU", stop("IST-KDK", "Kadikoy Market", 40.99, 29.03, 400, 30, null)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Stop IST-KDK needs both readyMinutes and dueMinutes, or neither"));
+        plan(route("IST-EU", stop("IST-KDK", "Kadikoy Market", 40.99, 29.03, 400, 60, 30)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("The time window of stop IST-KDK ends before it starts"));
+    }
+
+    @Test
     void refusesAStopCodeUsedTwice() throws Exception {
         plan(route("IST-EU", stop("STOP_1", "A", 41.0, 28.7, 10) + "," + stop("stop 1", "B", 41.01, 28.71, 10)))
                 .andExpect(status().isBadRequest())

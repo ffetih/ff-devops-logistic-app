@@ -51,6 +51,16 @@ rollout:
 # Schema migrations as an Argo CD PreSync hook: before the new pods start, a Job runs the
 # same image with this Spring profile, migrates and exits. The pods then run without Flyway.
 # The old version keeps serving while the hook runs, so a migration has to work for both.
+# Stopping a pod. Kubernetes takes it out of the Services and starts stopping it at the same
+# moment, but the routing (kube-proxy on every node) learns of it a little later: for that
+# moment, new connections still go to its IP. Without a pause the process is already gone and
+# they hang until they time out. With it, Kubernetes runs the preStop sleep first; the pod still
+# answers what arrives, then gets SIGTERM, and Spring Boot's graceful shutdown (the default)
+# finishes the requests in flight, for up to 30 s. The grace period covers both.
+shutdown:
+  preStopSleepSeconds: 10
+  terminationGracePeriodSeconds: 45
+
 # The hook Jobs (migration, smoke test) get a new name on every sync and are deleted by
 # Kubernetes this long after they finish, passed or failed: a day to read their logs.
 hookJobTtlSeconds: 86400

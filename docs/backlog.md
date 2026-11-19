@@ -260,7 +260,8 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 | A | S06-01 | The PreSync hook applies `V4`; a shipment with three legs comes back numbered, with its CO2e; the smoke test checks the shipment list |
 | fix | S06-02 | Every sync's smoke test result is its own |
 | B | S06-03 … S06-06 | The lifecycle: pickup, departure, delivery; two deliveries at once give one success and one `409`; one shipment per customer order number |
-| C | S06-07 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
+| fix | S06-07 | A release no longer drops calls to the pods it stops: the smoke test passes after a canary, and the analysis has no error measurement |
+| C | S06-08 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
 
 - [x] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
   The `tms` module and its first tables (`V4__tms_init.sql`): a shipment numbered from `tms_shipment_seq` (`SHP-10001`, e-CMR `ECMR-10001`), with consignor, consignee, an ISO 6346 equipment code, the SSCC it carries and an Incoterm, and its legs in order. The legs must form one chain from origin to destination. The EN 16258 footprint from `standards` is calculated when the shipment is planned and kept. The smoke test now also lists shipments.
@@ -284,7 +285,10 @@ Goal: shipments from planning to delivery, and the first event between modules, 
   An optional `customerOrderReference` makes `POST /shipments` safe to repeat: the same number with the same plan answers `200` with the existing shipment, with another plan `409 customer-order-conflict`. `V7` adds the column and a unique index per tenant. Two retries at the same moment: the index lets one insert commit, and the loser reads the winner in a fresh transaction. The plan is checked and compared before it takes a shipment number. Against PostgreSQL, eight parallel identical requests give one `201` and seven `200`.
   Absorbs: `ee69a9c`, `V9`.
   Done when: the same request with an order number, sent twice, answers `201` and then `200` with the same shipment.
-- [ ] **S06-07 Publish ShipmentDelivered through the event publication registry**
+- [x] **S06-07 Stop pods without dropping requests**
+  After the S06-05 release the smoke test failed on its first call, `Connection timed out after 10000 milliseconds`, and passed every later one; each canary analysis had one measurement that hung (`Client.Timeout exceeded`, also after S05-06's wait). Both ran while old pods were stopped: Kubernetes takes a stopping pod out of the Services at once, but kube-proxy updates its rules a moment later, and until then connections go to an IP where nothing listens and hang. The shared chart now gives every pod a `preStop` sleep of 10 s, so it keeps answering while the routing catches up, and `terminationGracePeriodSeconds: 45` for that plus Spring Boot's graceful shutdown. S05-06/08's explanation (a slow first answer of a cold pod) was wrong; its wait stays harmless.
+  Done when: after the release following this one, the smoke test passes and the analysis run shows `✓ 3` without `⚠`.
+- [ ] **S06-08 Publish ShipmentDelivered through the event publication registry**
   Absorbs: `2019e11`, `V7`, `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup), `59d8170` (listener concurrency).
 
 ## S7 — Geo and documents

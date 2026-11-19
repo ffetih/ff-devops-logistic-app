@@ -29,8 +29,27 @@ spring:
   flyway:
     # Scripts in db/migration. Module tables carry the module's prefix (wms_, tms_, geo_, rep_).
     enabled: true
+  kafka:
+    # Used only when events are externalized (spring.modulith.events.externalization below).
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    admin:
+      # Topics are created at the app's start. Without a broker, the defaults hold the start for
+      # 40 s (30 s for the call, 10 s to close); the app starts anyway and simply has no topics,
+      # so it should not wait long for that.
+      operation-timeout: 5s
+      close-timeout: 2s
+    producer:
+      # Wait for every in-sync replica: an acknowledged event survives a broker that fails.
+      acks: all
+      properties:
+        # Give up a send after 10 s without a broker instead of 60 s. The event stays open in
+        # event_publication, and the outbox sends it again.
+        max.block.ms: 10000
   modulith:
     events:
+      externalization:
+        # false: events stay inside the app. true: events marked @Externalized also go to Kafka.
+        enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
       jdbc:
         schema-initialization:
           # event_publication is created by Flyway (V8), like every other table.
@@ -118,6 +137,10 @@ logistics:
       connect-timeout: PT2S
       read-timeout: PT5S                                # a stalled OSRM answers 503, it does not hold the request
   events:                                               # the event outbox's upkeep (package outbox)
+    kafka:
+      # Topics are created when the app starts with externalization on; existing ones are kept.
+      partitions: ${EVENTS_KAFKA_PARTITIONS:3}
+      replicas: ${EVENTS_KAFKA_REPLICAS:1}
     resubmit-delay: ${EVENTS_RESUBMIT_DELAY:PT30S}       # how often a pod tries to take the lock and resubmit
     resubmit-min-age: ${EVENTS_RESUBMIT_MIN_AGE:PT1M}    # first wait after a failure
     resubmit-max-delay: PT1H                             # the wait doubles up to this

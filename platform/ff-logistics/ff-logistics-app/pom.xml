@@ -88,6 +88,18 @@
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-starter-jdbc</artifactId>
         </dependency>
+        <!-- Events marked @Externalized also go to Kafka, through the same registry: a send that
+             fails stays in event_publication and is sent again. Off unless
+             spring.modulith.events.externalization.enabled=true. -->
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-events-kafka</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
         <!-- Orders longer routes and routes with time windows (geo); version from the base BOM -->
         <dependency>
             <groupId>ai.timefold.solver</groupId>
@@ -134,6 +146,12 @@
         <dependency>
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- In-process Kafka broker (KRaft) for the externalization test; no container needed -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Most tests run on an in-memory database -->

@@ -213,6 +213,31 @@ Cause:: `412`: the document is already stored; a document is written once, and t
 Fix:: `412`: nothing to do, the document is there; read it through a download link. `403`: ask for a new link and send exactly the headers it names.
 History:: S07-04, S07-06.
 
+[[kafka]]
+== Kafka
+
+=== Shipment events do not reach Kafka
+
+Symptom:: A pickup, departure or delivery works, but nothing arrives on `ff.logistics.tms.shipment-*`, and `event_publication` keeps rows of the Kafka externalizer open (`FAILED`, attempts going up).
+Check:: The broker, the topics, and the app's warnings:
++
+[source,bash]
+----
+argocd app get kafka | grep -E 'Health|Sync Status'
+kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+kubectl -n ff-logistics logs -l app.kubernetes.io/name=logistics-app --tail=-1 | grep -iE 'kafka|UNKNOWN_TOPIC'
+----
+Cause:: Kafka is not running, or the topics are missing: the app creates them only when it starts, so an app that started before Kafka sends into topics that do not exist (`UNKNOWN_TOPIC_OR_PARTITION`), and the broker creates none by itself.
+Fix:: Sync `kafka` and wait for Healthy, then restart the app if the topics were missing: `kubectl argo rollouts restart logistics-app -n ff-logistics`. The open rows are sent again by the outbox, oldest first, with the waits of <<events>>; a row past its 5 attempts needs the reset there.
+History:: S08-02.
+
+=== A consumer sees a departure before its pickup
+
+Symptom:: On `ff.logistics.tms.shipment-progressed`, `DEPARTED` of a shipment comes before its `PICKED_UP`.
+Cause:: Expected. Every event is sent on its own after its transaction, and a failed send goes out after later ones: one key keeps one partition, not the order of the steps.
+Fix:: In the consumer: order by `occurredAt`, and ignore a step older than the one already stored.
+History:: S08-02.
+
 [[rollouts]]
 == Argo Rollouts
 

@@ -20,3 +20,9 @@ spring:
       mode: always
   flyway:
     enabled: false
+
+logging:
+  level:
+    # The Kafka client prints its whole configuration for every producer, consumer and admin
+    # client it creates (ShipmentEventsExternalizationTest); warnings are enough here.
+    org.apache.kafka: warn

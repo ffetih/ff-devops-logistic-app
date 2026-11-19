@@ -353,8 +353,10 @@ Goal: business events leave the logistics app through Kafka, from the same outbo
 - [x] **S08-01 Run single-node Kafka (KRaft)**
   `deploy/platform/kafka` through the `kafka` Application (wave -1): one `apache/kafka:4.2.2` broker that is its own controller, the version of the Kafka client Spring Boot manages. Two listeners, each advertising a name its clients can reach: `kafka-0.kafka:9092` inside the cluster, `localhost:9094` from the host (NodePort 30094). No topic is created by the broker itself; the services declare theirs. Topics live on the claim `data-kafka-0`. CI renders the kustomizations of `kafka` and, missing since S07-05, `rustfs`.
   Done when: `argocd app sync kafka` turns Healthy and `kafka-topics.sh --list` answers.
-- [ ] **S08-02 Externalize ShipmentDelivered and ShipmentProgressed**
-  Absorbs: `f4a575f`.
+- [x] **S08-02 Externalize ShipmentDelivered and ShipmentProgressed**
+  A pickup and a departure now publish `ShipmentProgressed` (`PICKED_UP`, `DEPARTED`) in their transaction, as a delivery publishes `ShipmentDelivered`. Both are `@Externalized`: with `EVENTS_EXTERNALIZATION_ENABLED=true` (the cluster), Spring Modulith's Kafka externalizer is one more listener in `event_publication`, so a send that fails is sent again by the outbox. Topics `ff.logistics.tms.shipment-progressed` and `…-delivered`, 3 partitions, keyed by the shipment id, declared by the app (not in the `migrate` profile). A test against an in-process broker reads all three messages. Its first run caught the departure ahead of the pickup: per-key order is not guaranteed in this mode, so consumers order by `occurredAt`; the guides say so.
+  Absorbs: `f4a575f` (externalization off by default, send timeout 10 s). Left: the trace header (S13).
+  Done when: after syncing `kafka` and the app, a pickup, a departure and a delivery of the walkthrough's shipment appear on their topics, keyed by its id.
 - [ ] **S08-03 Add the analytics loader with a dead-letter topic**
   Port: `platform/ff-analytics/analytics-loader`, `V1`–`V3`.
   Absorbs: `1857652`.

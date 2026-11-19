@@ -751,6 +751,56 @@ The settings are in `application.yml` under `logistics.events` and `spring.modul
 
 Listeners run on virtual threads, on an executor that has no limit by default. A burst of deliveries would start every listener at once, all waiting for one of the ten database connections. `spring.task.execution.simple.concurrency-limit` (16, `TASK_EXECUTION_CONCURRENCY_LIMIT`) caps them; above it, the publisher waits for a free slot.
 
+[[kafka]]
+=== Events out: Kafka
+
+Systems outside the app learn of shipments through Kafka. Nothing new does the sending: an event marked `@Externalized` gets one more listener, Spring Modulith's Kafka externalizer, with its own row in `event_publication`. So everything above holds for Kafka too: the row commits with the change, and a send that fails stays open and is sent again.
+
+[plantuml,shipment-events-out,svg]
+----
+@startuml
+participant "TMS\nShipmentService" as tms
+database "event_publication" as db
+participant "reporting\nlistener" as rep
+participant "Kafka\nexternalizer" as ext
+queue "ff.logistics.tms.\nshipment-delivered" as topic
+tms -> db : COMMIT: the delivery, and one row per listener
+db -> rep : after the commit
+rep -> db : COMPLETED
+db -> ext : after the commit
+ext -> topic : send, key = shipment id, value = the event as JSON
+alt broker answers
+  ext -> db : COMPLETED
+else no broker within 10 s
+  ext -> db : FAILED, sent again by the outbox
+end
+@enduml
+----
+
+[cols="2,2,3",options="header"]
+|===
+| Topic | Event | When
+
+| `ff.logistics.tms.shipment-progressed` | `ShipmentProgressed`: `stage` `PICKED_UP` or `DEPARTED`, `occurredAt` | `POST …/pickup`, `…/departure`
+| `ff.logistics.tms.shipment-delivered` | `ShipmentDelivered`: `deliveredAt`, `totalDistanceKm`, `savedCo2eKg` | `POST …/delivery`
+|===
+
+Both carry `shipmentId`, `tenantId`, `shipmentNumber` and `customerOrderReference`, and are keyed by the shipment id. Three partitions each, one copy (one broker).
+
+* *Topics are the app's.* The broker creates none; the app declares both (`ShipmentTopics`) and Spring creates them when the app starts with externalization on. An app that started before Kafka was there sends into topics that do not exist: start Kafka first, and restart the app if it was not.
+* *Same key, same partition, not the same order.* Kafka keeps the messages of one partition in the order they were sent, but the app sends each event on its own after its transaction commits, and a failed send goes out later still. A departure can arrive before its pickup; the first run of the test showed exactly that. A consumer orders the steps of a shipment by `occurredAt`, which only moves forward, never by arrival. The reference project's test claimed the opposite and passed by luck.
+* *At least once.* An event can be sent twice (a send whose answer was lost is sent again). A consumer stores by the shipment id and ignores what it already has.
+* *A contract.* Consumers outside this repository read these fields: add fields, never rename or remove them.
+* *Off by default.* `EVENTS_EXTERNALIZATION_ENABLED=true` in the cluster; an IDE run without Kafka keeps its events inside the app. From the IDE with Kafka, `KAFKA_BOOTSTRAP_SERVERS` is `localhost:9094` by default.
+
+To watch it on the cluster, read the progress topic in one terminal and move the walkthrough's shipment in another:
+
+[source,bash]
+----
+kubectl -n ff-logistics exec -it kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic ff.logistics.tms.shipment-progressed --from-beginning --property print.key=true
+----
+
 [[reporting]]
 == Reporting
 

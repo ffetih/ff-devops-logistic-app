@@ -84,6 +84,11 @@ env:
       secretKeyRef:
         name: rustfs-credentials
         key: RUSTFS_SECRET_KEY
+  # Shipment events also go to Kafka (deploy/platform/kafka), same namespace.
+  - name: EVENTS_EXTERNALIZATION_ENABLED
+    value: "true"
+  - name: KAFKA_BOOTSTRAP_SERVERS
+    value: kafka:9092
   # A broken release on purpose: set "false", commit, sync. The analysis fails at 25% and the
   # rollout aborts. Set it back to "true" (or revert the commit) and sync to recover.
   - name: FF_RELEASE_HEALTHY

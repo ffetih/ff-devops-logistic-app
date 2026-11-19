@@ -144,6 +144,31 @@ Cause:: A script that does not apply to the database as it is: a typo, or a chan
 Fix:: Nothing is broken: the running version keeps serving on the old schema. Fix the script in a new commit; never edit a script that has already been applied somewhere, add the next version instead.
 History:: S03, S06-05 (`version BIGINT NOT NULL DEFAULT 0` on a table with rows).
 
+[[events]]
+== Events
+
+=== An event is not handled: its row stays open
+
+Symptom:: A delivery does not show up in `/api/v1/reporting/deliveries`, or the log warns that event publications `stopped retrying`.
+Check:: The open rows of the registry, oldest first:
++
+[source,bash]
+----
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c \
+  "select id, listener_id, status, completion_attempts, publication_date, last_resubmission_date
+   from event_publication where completion_date is null order by publication_date"
+----
+And the log of the listener's exception: `kubectl -n ff-logistics logs -l app.kubernetes.io/name=logistics-app --tail=-1 | grep -A5 'async method'`.
+Cause:: The listener threw, or the pod stopped while it ran. A row `FAILED` with fewer than 5 attempts is retried by itself, with a growing wait; a row `PUBLISHED` or `PROCESSING` turns `FAILED` after 5 minutes. Only a row with 5 attempts stays as it is.
+Fix:: Find why the listener fails, from its exception, and fix that. Then let the row be tried again by giving it its attempts back; the next run, within 30 seconds, publishes it:
++
+[source,sql]
+----
+update event_publication set status = 'FAILED', completion_attempts = 1, last_resubmission_date = now() - interval '1 hour'
+where id = '<id>';
+----
+History:: S06-09, S06-10.
+
 [[rollouts]]
 == Argo Rollouts
 

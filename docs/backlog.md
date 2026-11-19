@@ -296,8 +296,10 @@ Goal: shipments from planning to delivery, and the first event between modules, 
   `ShipmentDelivered` (TMS base package) is published in the delivery's transaction; Spring Modulith's JDBC registry writes it to `event_publication` (`V8`) with the shipment's update, both or neither. The first listener is the new `reporting` module: after the commit, on its own thread, it binds the tenant from the event and records the shipment in `rep_shipment_deliveries` (`V9`), idempotently. `GET /api/v1/reporting/deliveries` shows them; the smoke test reads it. Listeners are capped at 16 at a time. Against PostgreSQL, four parallel confirmations leave one delivered shipment and one completed event.
   Absorbs: `2019e11`, `V7`, `59d8170` (listener concurrency).
   Done when: a delivery in the walkthrough appears under `/api/v1/reporting/deliveries`, and its `event_publication` row is `COMPLETED`.
-- [ ] **S06-10 Resubmit unfinished events from one pod**
+- [x] **S06-10 Resubmit unfinished events from one pod**
+  The new technical module `outbox` publishes unfinished events again every 30 s. A PostgreSQL advisory lock lets one pod run it at a time; the others skip. `EventRetryPolicy`: the wait doubles from 1 min to 1 h, at most 5 attempts, then the row stays open, counted in the gauge `logistics.events.publications.exhausted`. Rows a stopped pod left behind turn `FAILED` after 5 min (staleness). Completed rows are deleted after 7 days. Not in the `migrate` profile. Tests: a failing listener gets its event again, and stops after the maximum; against PostgreSQL, a run skips while another session holds the lock. The Operations Guide says what to do with a row that stopped retrying.
   Absorbs: `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup).
+  Done when: the tests pass in CI, and in the cluster `event_publication` holds no open rows a few minutes after the walkthrough's delivery.
 
 ## S7 — Geo and documents
 

@@ -36,8 +36,15 @@ spring:
           # event_publication is created by Flyway (V8), like every other table.
           enabled: false
       # Off: every pod would publish all unfinished events again at its start, four pods four
-      # times. S06-10 resubmits them on a schedule, from one pod at a time.
+      # times. The outbox module resubmits them on a schedule, from one pod at a time.
       republish-outstanding-events-on-restart: false
+      # Only FAILED rows are resubmitted. A row a stopped pod left PUBLISHED, PROCESSING or
+      # RESUBMITTED turns FAILED once it is older than these (checked every minute). Well above
+      # the time a listener needs, so a slow listener is not taken for a lost one.
+      staleness:
+        published: ${EVENTS_STALE_AFTER:PT5M}
+        processing: ${EVENTS_STALE_AFTER:PT5M}
+        resubmitted: ${EVENTS_STALE_AFTER:PT5M}
   security:
     oauth2:
       resourceserver:
@@ -84,3 +91,12 @@ ff:
     header-fallback:
       # Local development only, switched on by the "local" profile (application-local.yml).
       enabled: false
+
+# The event outbox's upkeep (package outbox). Durations are ISO-8601.
+logistics:
+  events:
+    resubmit-delay: ${EVENTS_RESUBMIT_DELAY:PT30S}       # how often a pod tries to take the lock and resubmit
+    resubmit-min-age: ${EVENTS_RESUBMIT_MIN_AGE:PT1M}    # first wait after a failure
+    resubmit-max-delay: PT1H                             # the wait doubles up to this
+    max-attempts: ${EVENTS_MAX_ATTEMPTS:5}               # then the row stays open for a person
+    completed-retention: P7D                             # completed rows are deleted after this

@@ -25,8 +25,9 @@ for lib in tenant security web persistence storage; do
   "${MVN[@]}" -f "base/ff-base-$lib/pom.xml" install "$@"
 done
 
-echo "[3/4] Platform: identity service, logistics app"
+echo "[3/4] Platform: identity service, logistics app, analytics loader"
 "${MVN[@]}" -f platform/ff-identity/identity-service/pom.xml install "$@"
 "${MVN[@]}" -f platform/ff-logistics/ff-logistics-app/pom.xml install "$@"
+"${MVN[@]}" -f platform/ff-analytics/analytics-loader/pom.xml install "$@"
 
 echo "[4/4] Done."

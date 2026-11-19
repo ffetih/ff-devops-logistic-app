@@ -484,6 +484,23 @@ Keycloak has one public address, `http://localhost:8180`: the browser opens it, 
 
 Only the identity service calls Keycloak; the other services never see it. The realm lives in Git (`ff-logistics-realm.json`): a change there renames the generated ConfigMap, Keycloak restarts on the next sync and imports it. Dev mode keeps everything else inside the container, so users or clients created through the API are gone after a restart.
 
+## The analytics loader
+
+`deploy/apps/analytics-loader`, one more folder for the `ff-services` ApplicationSet: a plain Deployment (no canary, it serves no traffic), port 8086 on the host for Actuator only. It reads `ff.logistics.tms.shipment-delivered` and writes into its own database, `ff_logistics_analytics`, on the cluster's PostgreSQL.
+
+Its first sync needs three things, in this order:
+
+1. The image: the first push to main builds it and CI writes its tag into `image-local.yaml` (until then the tag is `unpublished`). The new GHCR package is private: *Packages → ff-devops-logistic-app/analytics-loader → Package settings → Change visibility → Public*, as for the logistics app.
+2. `kafka` and `postgres` Healthy, and the logistics app synced since S08-02, so the topic exists.
+3. `argocd app sync analytics-loader`: PreSync creates the database if it is missing (`database.create` in the chart), then Flyway migrates it; then the Deployment starts.
+
+```bash
+kubectl -n ff-logistics logs deploy/analytics-loader | grep -E 'partitions assigned|Started'
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics_analytics -c 'select count(*) from shipment_deliveries'
+```
+
+`partitions assigned: [ff.logistics.tms.shipment-delivered-0, -1, -2]` means it consumes. A new consumer group starts at the oldest message, so deliveries made before the loader existed are loaded too.
+
 ## The identity service
 
 `platform/ff-identity/identity-service`, deployed with the shared chart (`apps/identity`) as a plain Deployment on host port 8085. It is the only process that calls Keycloak; the other services check tokens against its JWKS.

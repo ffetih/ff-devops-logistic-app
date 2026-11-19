@@ -1,0 +1,36 @@
+# Analytics loader on the local k3d cluster. Read after values.yaml, so it wins.
+#
+# A plain Deployment, no canary: the loader serves no traffic to split. Its work is the Kafka
+# consumer group, and a new pod simply takes the partitions over from the old one.
+service:
+  type: NodePort
+  nodePort: 30086 # host port 8086 (actuator only)
+
+# Its own database on the shared PostgreSQL server: created if missing (PreSync, weight -1),
+# then migrated by Flyway (PreSync, the image's migrate profile).
+database:
+  create: true
+  name: ff_logistics_analytics
+
+migration:
+  enabled: true
+
+# Every variable in one list: Helm replaces lists, it does not merge them.
+env:
+  # The postgres Application in the same namespace. The loader writes rows of every tenant, so it
+  # connects as a role that row-level security does not restrict (S08-04): here the server's owner.
+  - name: ANALYTICS_DB_URL
+    value: jdbc:postgresql://postgres:5432/ff_logistics_analytics
+  - name: ANALYTICS_DB_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: postgres-credentials
+        key: username
+  - name: ANALYTICS_DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-credentials
+        key: password
+  # The kafka Application in the same namespace (deploy/platform/kafka).
+  - name: KAFKA_BOOTSTRAP_SERVERS
+    value: kafka:9092

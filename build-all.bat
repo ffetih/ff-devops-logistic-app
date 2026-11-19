@@ -25,9 +25,10 @@ for %%L in (tenant security web persistence storage) do (
   %MVN% -f base\ff-base-%%L\pom.xml install %* || goto failed
 )
 
-echo [3/4] Platform: identity service, logistics app
+echo [3/4] Platform: identity service, logistics app, analytics loader
 %MVN% -f platform\ff-identity\identity-service\pom.xml install %* || goto failed
 %MVN% -f platform\ff-logistics\ff-logistics-app\pom.xml install %* || goto failed
+%MVN% -f platform\ff-analytics\analytics-loader\pom.xml install %* || goto failed
 
 echo [4/4] Done.
 popd

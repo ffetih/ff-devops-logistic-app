@@ -1,0 +1,128 @@
+= {project-name}: Analytics Guide
+include::../_attributes.adoc[]
+// Revision of the latest change, written by docs/revisions.sh during the build (absent in a preview).
+include::../../build/revisions/analytics-guide.adoc[opts=optional]
+:doctype: book
+
+[preface]
+== About this guide
+
+This guide is for developers of the analytics side: the loader that takes business events from Kafka into the analytics database, and that database itself.
+The events and their topics belong to the logistics app; how they leave it is in the link:{url-logistics-guide}#kafka[Logistics App Guide]. How a problem on the cluster is traced is in the link:{url-operations-guide}[Operations Guide].
+
+[[loader]]
+== The analytics loader
+
+A service of its own (`platform/ff-analytics/analytics-loader`, port 8086) that reads `ff.logistics.tms.shipment-delivered` and writes one row per delivered shipment into `ff_logistics_analytics`. It is that database's only writer and owns its schema. It shares the message format with the logistics app, not its code: it reads the JSON its own way (`ShipmentDeliveredMessage`), so either side can be built and released without the other.
+
+[plantuml,analytics-loader,svg]
+----
+@startuml
+queue "ff.logistics.tms.\nshipment-delivered" as topic
+participant "ShipmentDelivered\nListener" as listener
+participant "DeliveryStore" as store
+database "ff_logistics_analytics" as db
+queue "ff.logistics.tms.\nshipment-delivered.DLT" as dlt
+topic -> listener : message (key = shipment id)
+alt valid
+  listener -> store : store
+  store -> db : INSERT … ON CONFLICT (shipment_id) DO NOTHING
+  listener -> topic : commit offset
+else broken (not JSON, a field missing, a bad tenant id)
+  listener -> dlt : the message as it came, with the reason in its headers
+  listener -> topic : commit offset: the next message is read
+else the database is down
+  listener -> listener : wait 1 s, 2 s, 4 s … 30 s, and try again, without end
+end
+@enduml
+----
+
+[[failures]]
+=== Two kinds of failure
+
+A message that cannot be loaded either never will be, or cannot be loaded *yet*. The loader tells the two apart and treats them oppositely (`KafkaErrorHandling`):
+
+[cols="1,2,2",options="header"]
+|===
+| Failure | Example | What happens
+
+| Broken message (`InvalidMessageException`) | Not JSON; `tenantId` missing or not a tenant id; a negative distance | Retrying cannot help. It goes to `<topic>.DLT` at once, unchanged, with Spring's headers saying why (`kafka_dlt-exception-message`) and where it came from (`kafka_dlt-original-topic`, partition, offset). The next message is read.
+| Anything else | PostgreSQL restarting or down | Retrying is the fix. The partition waits, 1 s doubling up to 30 s, without end, and continues where it stopped. Nothing is skipped and nothing is loaded out of turn.
+|===
+
+Sending a database outage to the dead-letter topic would empty the topic into it within seconds; waiting on a broken message would stop every message behind it for good. The dead-letter topic is created by the loader when it starts, with one partition; it is read by a person, not by a program.
+
+[[at-least-once]]
+=== Loaded once, read at least once
+
+Kafka hands a message to the loader at least once: the offset is committed after the row is written, so a loader that stops in between reads the message again. The logistics app may also send a delivery twice. The shipment id is the table's primary key and the insert is `ON CONFLICT DO NOTHING`, so a second copy changes nothing. The metric `analytics.loader.deliveries` counts both, tagged `result=inserted` or `duplicate`; `analytics.loader.dead.letters` counts what went to a dead-letter topic.
+
+=== The message it reads
+
+[cols="2,1,4",options="header"]
+|===
+| Field | Required | Check
+
+| `shipmentId` | yes | a UUID; the key of the row
+| `tenantId` | yes | the platform's tenant id format (`TenantIds`), the same rule the tokens follow
+| `shipmentNumber` | yes | at most 40 characters
+| `customerOrderReference` | no | at most 64 characters
+| `totalDistanceKm`, `savedCo2eKg` | yes | numbers, not negative
+| `deliveredAt` | yes | an ISO-8601 instant
+|===
+
+Any other field is ignored, so the logistics app may add fields without the loader's release.
+
+[[database]]
+== The analytics database
+
+`ff_logistics_analytics`, a second database on the cluster's PostgreSQL server. The server's image creates databases only on an empty volume, so the loader's chart brings a PreSync step that creates it if it is missing (`database.create`, `templates/job-database.yaml`), before Flyway migrates it in the next PreSync step:
+
+[source,text]
+----
+sync analytics-loader
+  PreSync  weight -1  analytics-loader-database-…  CREATE DATABASE ff_logistics_analytics, if missing
+  PreSync  weight  0  analytics-loader-migrate-…   Flyway, the image's migrate profile
+  Sync                Deployment analytics-loader   consumes
+----
+
+Its tables have no module prefix: the whole database is analytics.
+
+[cols="2,4",options="header"]
+|===
+| Table | Rows
+
+| `shipment_deliveries` | One per delivered shipment: tenant, number, order reference, distance, CO~2~e saved, `delivered_at`, and `loaded_at`, when the loader stored it
+|===
+
+[[try-it]]
+== Try it on the cluster
+
+After a delivery in the logistics app's walkthrough, the loader has stored it within a second:
+
+[source,bash]
+----
+kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics_analytics -c \
+  "select shipment_number, tenant_id, saved_co2e_kg, delivered_at, loaded_at from shipment_deliveries order by loaded_at desc limit 5"
+----
+
+A broken message on purpose, then the dead-letter topic:
+
+[source,bash]
+----
+echo 'broken-1:{"tenantId": "Not A Tenant"}' | kubectl -n ff-logistics exec -i kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server localhost:9092 --topic ff.logistics.tms.shipment-delivered --property parse.key=true --property key.separator=:
+kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic ff.logistics.tms.shipment-delivered.DLT --from-beginning --timeout-ms 5000 \
+  --property print.key=true --property print.headers=true
+kubectl -n ff-logistics logs deploy/analytics-loader | grep 'sent to'
+----
+
+The consumer prints the message with its key and Spring's headers, among them `kafka_dlt-exception-message:tenantId is not a valid tenant id`; the loader's log has the same reason. The next delivery is loaded as before.
+
+[glossary]
+== Glossary
+
+include::../shared/glossary.adoc[]
+
+include::../../build/revisions/analytics-guide-history.adoc[opts=optional]

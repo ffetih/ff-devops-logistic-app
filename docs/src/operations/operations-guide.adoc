@@ -238,6 +238,28 @@ Cause:: Expected. Every event is sent on its own after its transaction, and a fa
 Fix:: In the consumer: order by `occurredAt`, and ignore a step older than the one already stored.
 History:: S08-02.
 
+=== Messages wait on a dead-letter topic
+
+Symptom:: `analytics.loader.dead.letters` goes up, or the loader logs `Message ff.logistics.tms.shipment-delivered-<p>@<offset> sent to ….DLT: <reason>`; a delivery is missing from the analytics database.
+Check:: The messages, with why they were set aside:
++
+[source,bash]
+----
+kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic ff.logistics.tms.shipment-delivered.DLT --from-beginning --timeout-ms 5000 --property print.key=true --property print.headers=true
+----
+Cause:: A message the loader can never store: not JSON, a field missing, a tenant id in the wrong format. The header `kafka_dlt-exception-message` names it. A message there means the producer and the loader disagree on the format; it is not a passing fault.
+Fix:: Fix the side that is wrong (usually the producer) and release it. The set-aside message stays on the topic as evidence; to load it after the fix, publish its corrected value to the original topic with the same key. The loader stores a shipment once, so sending one twice does no harm.
+History:: S08-03.
+
+=== The loader stops loading, and nothing goes to the dead-letter topic
+
+Symptom:: Deliveries do not reach `shipment_deliveries`; the loader's log repeats the same error with growing pauses; the consumer group's lag grows.
+Check:: `kubectl -n ff-logistics logs deploy/analytics-loader --tail=50`, and the lag: `kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group ff-analytics-loader`.
+Cause:: Not a broken message but something that can be fixed: usually the analytics database is down or unreachable. The loader waits on that partition, 1 s doubling up to 30 s, without end, on purpose: skipping would lose deliveries.
+Fix:: Bring the database back; the loader continues by itself where it stopped, and the lag drains. A restart is not needed.
+History:: S08-03.
+
 [[rollouts]]
 == Argo Rollouts
 

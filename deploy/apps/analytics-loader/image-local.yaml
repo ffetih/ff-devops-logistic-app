@@ -1,0 +1,9 @@
+# Written by CI on every push to main (.github/workflows/ci.yml): the image it just
+# published. Nothing else lives here, so the bot's commit never touches a line that a
+# person edits in values-local.yaml. For an image loaded with `k3d image import`, set the
+# tag to "local" here by hand.
+#
+# "unpublished" until the first push to main has built the image: sync after CI has written
+# the commit's tag here.
+image:
+  tag: unpublished

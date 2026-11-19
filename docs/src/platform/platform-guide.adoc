@@ -98,6 +98,7 @@ start
 :operator syncs;
 :PreSync hook: Flyway migrates;
 :Rollout: 25 % → analysis → 50 % → 100 %;
+:PostSync hook: smoke test through the Service;
 stop
 @enduml
 ----
@@ -107,6 +108,7 @@ stop
 * *The tag is the commit.* Images are `ghcr.io/ffetih/ff-devops-logistic-app/<service>:<commit sha>`. CI writes the tag into `image-local.yaml`, a file nobody edits by hand, so the bot's commit never collides with a person's.
 * *Migrations before pods.* A PreSync hook Job runs the same image in the `migrate` profile. If it fails, the sync stops and the running version keeps serving. Migrations must work for the old and the new version at once: expand first, contract a release later.
 * *A canary decides by itself.* The analysis reads `/actuator/health/release` on the canary pod three times; one `DOWN` aborts the release and scales the canary back. Users stay on the stable pods throughout.
+* *Every sync ends with a smoke test.* Once the release has all traffic, a PostSync hook Job signs in through the identity service and calls the API through its Service. A failed check marks the sync Failed; the release stays, and the failure is the signal to look.
 
 === Argo CD layout
 
@@ -123,7 +125,7 @@ ff-root (app of apps, auto sync: only Argo CD objects)
     └── logistics-app
 ----
 
-A new service is a new folder under `deploy/apps` with three values files; the shared chart `deploy/charts/ff-service` renders a Deployment or a Rollout, its Services, the analysis and the migration hook from them.
+A new service is a new folder under `deploy/apps` with three values files; the shared chart `deploy/charts/ff-service` renders a Deployment or a Rollout, its Services, the analysis, the migration hook and the smoke test from them.
 
 [[base-library]]
 == How a service uses the base libraries

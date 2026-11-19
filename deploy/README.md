@@ -250,12 +250,14 @@ From S02-06 on, `values-local.yaml` releases the logistics app as a canary inste
 
 ```text
 setWeight 25   1 canary pod, 3 stable          users: logistics-app ──► stable only
-analysis       3 × GET /actuator/health/release on logistics-app-canary, 10 s apart
+analysis       10 s wait, then 3 × GET /actuator/health/release on logistics-app-canary, 10 s apart
                  all UP  ──► go on                 one DOWN ──► abort, canary to 0 pods
 setWeight 50   2 canary, 2 stable
 pause 30s
 setWeight 100  the canary becomes stable
 ```
+
+The wait (`initialDelay`) is for the canary Service: the analysis starts as soon as the canary pod is ready, and a call before the Service's endpoints include that pod reaches nobody. Such a call is an error, not a failure: Rollouts tolerates a few (`consecutiveErrorLimit`, 4), so the run still passes, but `kubectl argo rollouts get rollout` shows it as `⚠ 1` next to the three successes.
 
 Without an ingress or a service mesh there is no traffic split by percent. The weights decide how many pods run the new version; the main Service keeps users on the stable pods, and the canary Service gives the analysis the new pods alone.
 
@@ -326,6 +328,34 @@ kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logist
 The Job of the last sync stays until the next one replaces it (`BeforeHookCreation`), so its log can be read afterwards. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
 
 While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).
+
+### Smoke test: a PostSync hook
+
+`values-local.yaml` also turns on `smokeTest.enabled`. The sync then ends with a Job that calls the app the way a client does:
+
+```text
+PreSync   Job logistics-app-migrate      Flyway
+Sync      Rollout, Services, ...         canary 25 % → analysis → 50 % → 100 %
+          (Argo CD waits until every resource is Healthy: the Rollout is, after its last step)
+PostSync  Job logistics-app-smoke-test   sign in as nexus.planner, then GET:
+                                           /actuator/health/readiness   200, UP
+                                           /api/v1/me                   401 without a token
+                                           /api/v1/me                   200, tenant ff-eu-freight
+                                           /api/v1/wms/warehouses, asns 200
+          ├── a check fails → the Job fails → the sync is Failed (the release stays; look, or roll back)
+          └── all pass → the sync Succeeded
+```
+
+The checks are values (`smokeTest.checks`), the script is `curl` and `sh` in the chart's ConfigMap `logistics-app-smoke-test`, and the user comes from the Secret `smoke-test-user` next to the realm (`deploy/platform/keycloak/secret.yaml`). The checks only read: a smoke test runs on every sync and must not leave data behind.
+
+```bash
+argocd app sync logistics-app                     # waits for the canary, then the smoke test
+kubectl -n ff-logistics logs job/logistics-app-smoke-test
+```
+
+The canary analysis and the smoke test answer different questions. The analysis asks one canary pod, before it takes more traffic, whether this release may go on; the smoke test asks the Service, after the release has all traffic, whether the API works end to end: token, identity, database. A canary that aborts never becomes Healthy, so the smoke test does not run on it.
+
+To see it fail: in `values-local.yaml`, set `contains` of the token check on `/api/v1/me` to `"tenantId":"ff-tr-distribution"`, commit, sync. The pods do not change, so nothing rolls out; Argo CD applies the new ConfigMap, runs the Job, and the sync turns Failed with the failed check in the Job log. Revert and sync.
 
 ## Keycloak
 

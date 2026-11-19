@@ -26,6 +26,20 @@ rollout:
 migration:
   enabled: true
 
+# After each sync, once the canary has finished: sign in as the realm's demo planner and call
+# the API the way a client does. A failed check marks the sync Failed.
+smokeTest:
+  enabled: true
+  token:
+    url: http://identity:8085/sessions
+    secret: smoke-test-user
+  checks:
+    - {path: /actuator/health/readiness, status: 200, contains: '"status":"UP"'}
+    - {path: /api/v1/me, status: 401}
+    - {path: /api/v1/me, status: 200, token: true, contains: '"tenantId":"ff-eu-freight"'}
+    - {path: /api/v1/wms/warehouses, status: 200, token: true}
+    - {path: /api/v1/wms/asns, status: 200, token: true}
+
 # Every variable in one list: Helm replaces lists, it does not merge them, so an env list in
 # another values file would drop these.
 env:

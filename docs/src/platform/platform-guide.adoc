@@ -140,9 +140,11 @@ skinparam componentStyle rectangle
 [ff-base-security\nJWT resource server,\ntenant filter] as sec
 [ff-base-persistence\n@TenantId entities,\nDatabaseSequences] as per
 [ff-base-web\nRFC 9457 problems] as web
+[ff-base-storage\ndocuments in S3,\npresigned links] as sto
 sec --> tenant
 per --> tenant
 web --> tenant
+sto --> web : 409, 404, 503
 @enduml
 ----
 
@@ -154,12 +156,63 @@ web --> tenant
 | `siose-ff-base-security` | `TenantSecurityAutoConfiguration`: stateless filter chain, `@PreAuthorize`, tenant filter | `ff.security.tenant-claim`, `ff.security.header-fallback.*`
 | `siose-ff-base-persistence` | `TenantPersistenceAutoConfiguration`: Hibernate tenant resolver, `DatabaseSequences` | -
 | `siose-ff-base-web` | `ProblemDetailAutoConfiguration`: problem responses | -
+| `siose-ff-base-storage` | `ObjectStorageAutoConfiguration`: `ObjectStoragePort`, reference-only by default, S3 when configured and the AWS SDK is on the classpath (<<documents>>) | `ff.storage.*`
 |===
 
 * The logistics app uses `tenant` directly and `security` and `web` at `runtime` scope: its code never imports them, only their auto-configuration is used. `persistence` joins with the first entity.
 * *Replace* any piece by declaring your own bean: every auto-configured bean is `@ConditionalOnMissingBean`.
 * *No product names in base:* role names, sequence names or bucket contents live in the service and reach a library through configuration.
 * *Dependency hygiene:* base libraries fail the build on any unused or used-but-undeclared compile dependency; services only get warnings.
+
+[[documents]]
+=== Documents: siose-ff-base-storage
+
+A document (a proof-of-delivery signature, an e-CMR) is reserved first and uploaded later, by the client, straight to the object store. The bytes never pass through the service: it only signs a short-lived link.
+
+[plantuml,document-links,svg]
+----
+@startuml
+participant Client as c
+participant "Service\n(DocumentLinks)" as s
+participant "Object store\n(RustFS, S3)" as o
+c -> s : POST …/upload-link
+s -> o : HEAD key
+o --> s : 404, not stored yet
+s --> c : PUT url, 15 min,\nContent-Type, If-None-Match: *
+c -> o : PUT bytes, with both headers
+o --> c : 200
+c -> s : GET …/download-link
+s -> o : HEAD key
+s --> c : GET url, 15 min
+c -> o : GET
+o --> c : the document
+@enduml
+----
+
+[cols="1,3",options="header"]
+|===
+| Rule | How
+
+| One bucket, a prefix per tenant | Key `<tenant>/<category>/<reference>/<file>`, each part reduced to safe characters, so no value can climb out of its prefix (`ObjectKeys`). The location `s3://<bucket>/<key>` holds no endpoint or credentials and can be stored with the record.
+| Only the caller's tenant | A link is signed only for a location under the caller's tenant prefix; anything else is `403`, even if the record was loaded wrongly (`DocumentLinks`).
+| Written once (`BR-DOC-01`) | No upload link while the store holds the document: `409 document-already-stored`. The link itself is signed with `If-None-Match: *`, so a link issued earlier cannot overwrite it either: the store answers `412`, and a client that drops the header breaks the signature (`403`).
+| Nothing to download yet | `404` instead of a link to the store's own XML error.
+| Store unavailable | No store configured, no answer, or an error: `503 object-store-unavailable`. One call takes at most `ff.storage.s3.timeout` (10 s), retries included.
+| Two addresses | The service talks to the store inside the cluster (`http://rustfs-svc:9000`); a client cannot resolve that name, and the host is part of the signature. Links are therefore signed for `ff.storage.s3.public-endpoint` (`http://localhost:9000`).
+|===
+
+[cols="2,3",options="header"]
+|===
+| Setting | Meaning
+
+| `ff.storage.provider` | `reference-only` (default: keys only, nothing stored, links `503`) or `s3`
+| `ff.storage.bucket` | `ff-documents`; created when the first document needs it
+| `ff.storage.s3.endpoint`, `public-endpoint` | Where the service reaches the store, and where links point
+| `ff.storage.s3.access-key`, `secret-key` | Empty: the AWS default credential chain (environment, profile, pod role)
+| `ff.storage.s3.timeout` | Longest call to the store, 10 s
+|===
+
+`RustFsWriteOnceTest` checks the write-once rule against the RustFS version the cluster runs, in a container; it needs Docker or Podman, as CI has, and is skipped without.
 
 [[build-platform]]
 == Build platform

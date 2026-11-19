@@ -327,9 +327,11 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
   A stop may have a time window, `readyMinutes` and `dueMinutes` after departure (`V11`, both or neither). A vehicle that comes early waits. Up to 8 stops without windows keep nearest neighbour; any window, or more stops, go to Timefold: one tour, hard one point per minute late, soft one point per metre. It stops after 0.2 s without improvement, at the latest after 1 s. Late in the best order found: `400`. Timefold 2.8.0 is managed in the base BOM.
   Absorbs: `da10b36`, `0a4b9c0` (unimproved limit, version in the BOM).
   Done when: after the sync, the hook has applied `V11`, and the walkthrough's two-stop route with a window at Kadikoy comes back Kadikoy first, at minute 64.
-- [ ] **S07-04 Add the storage library**
+- [x] **S07-04 Add the storage library**
+  `siose-ff-base-storage`: `ObjectStoragePort` with a reference-only adapter (default) and an S3 adapter for any S3-compatible store, wired only when the service adds the AWS SDK. One bucket, a key prefix per tenant. `DocumentLinks` signs 15-minute upload and download links for a location under the caller's tenant; an upload link is refused once the document is stored (`409`) and carries `If-None-Match: *`; a download link is refused before it is (`404`). Links are signed for a public endpoint when the service reaches the store by an internal name. The exceptions extend base-web's, so their problem types need no handler: `409 document-already-stored`, `503 object-store-unavailable`. A store call is limited to 10 s. `RustFsWriteOnceTest` checks the write-once rule against RustFS 1.0.6 in CI.
   Port: `base/ff-base-storage`.
-  Absorbs: `d0f3003` (write once), `4e28bff` (document links).
+  Absorbs: `d0f3003` (write once), `4e28bff` (document links), the public endpoint and bucket creation of `67c2c56`. New: the 404 before an upload, the call timeout, 503 for a store that does not answer.
+  Done when: the library's tests pass in CI, `RustFsWriteOnceTest` included.
 - [ ] **S07-05 Run RustFS from its Helm chart as a multi-source Application**
   Upstream chart plus `$values` from this repo.
 - [ ] **S07-06 Issue presigned upload and download links**

@@ -327,6 +327,34 @@ The Job of the last sync stays until the next one replaces it (`BeforeHookCreati
 
 While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).
 
+### Smoke test: a PostSync hook
+
+`values-local.yaml` also turns on `smokeTest.enabled`. The sync then ends with a Job that calls the app the way a client does:
+
+```text
+PreSync   Job logistics-app-migrate      Flyway
+Sync      Rollout, Services, ...         canary 25 % → analysis → 50 % → 100 %
+          (Argo CD waits until every resource is Healthy: the Rollout is, after its last step)
+PostSync  Job logistics-app-smoke-test   sign in as nexus.planner, then GET:
+                                           /actuator/health/readiness   200, UP
+                                           /api/v1/me                   401 without a token
+                                           /api/v1/me                   200, tenant ff-eu-freight
+                                           /api/v1/wms/warehouses, asns 200
+          ├── a check fails → the Job fails → the sync is Failed (the release stays; look, or roll back)
+          └── all pass → the sync Succeeded
+```
+
+The checks are values (`smokeTest.checks`), the script is `curl` and `sh` in the chart's ConfigMap `logistics-app-smoke-test`, and the user comes from the Secret `smoke-test-user` next to the realm (`deploy/platform/keycloak/secret.yaml`). The checks only read: a smoke test runs on every sync and must not leave data behind.
+
+```bash
+argocd app sync logistics-app                     # waits for the canary, then the smoke test
+kubectl -n ff-logistics logs job/logistics-app-smoke-test
+```
+
+The canary analysis and the smoke test answer different questions. The analysis asks one canary pod, before it takes more traffic, whether this release may go on; the smoke test asks the Service, after the release has all traffic, whether the API works end to end: token, identity, database. A canary that aborts never becomes Healthy, so the smoke test does not run on it.
+
+To see it fail: in `values-local.yaml`, set `contains` of the token check on `/api/v1/me` to `"tenantId":"ff-tr-distribution"`, commit, sync. The pods do not change, so nothing rolls out; Argo CD applies the new ConfigMap, runs the Job, and the sync turns Failed with the failed check in the Job log. Revert and sync.
+
 ## Keycloak
 
 `deploy/platform/keycloak` through the `keycloak` Application: Keycloak 26 in dev mode with the `ff-logistics` realm imported at start.

@@ -52,6 +52,22 @@ migration:
   backoffLimit: 1
   activeDeadlineSeconds: 300
 
+# A smoke test as an Argo CD PostSync hook: after a sync, once the service is Healthy, a Job
+# calls it through its Service and fails the sync if any check fails. curl in a shell script;
+# the script and the checks are a ConfigMap of the chart.
+smokeTest:
+  enabled: false
+  image: curlimages/curl:8.22.0
+  activeDeadlineSeconds: 120
+  # Sign in first, for checks that need a bearer token: POST {"username", "password"} to url,
+  # which answers {"accessToken": ...} (the identity service's /sessions). The Secret holds
+  # the keys username and password. No url: no sign-in.
+  token:
+    url: ""
+    secret: ""
+  # - {path: /api/v1/me, status: 200, token: true, contains: '"tenantId":"ff-eu-freight"'}
+  checks: []
+
 # Extra container environment, as Kubernetes EnvVar entries (name/value or name/valueFrom)
 env: []
 

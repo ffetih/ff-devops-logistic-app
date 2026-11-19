@@ -236,8 +236,10 @@ Three pull requests:
   One request receives one pallet: it books the quantity on the ASN line, labels the pallet with an SSCC (extension digit, the warehouse's GS1 company prefix, a serial from `wms_sscc_serial_seq`, check digit) and puts it into a bin location with room. `V3__wms_pallets.sql`. The ASN and the bin are locked for the transaction, so two scanners on the same ASN cannot receive more than was announced. The ASN moves from `EXPECTED` through `RECEIVING` to `RECEIVED`.
   Port: the SSCC part of `WmsInventoryService` (without the inspection photo: documents come in S7).
   Done when: after the sync, the hook has applied `V3`, and receiving the walkthrough's ASN in two pallets returns two valid SSCCs and leaves it `RECEIVED`.
-- [ ] **S05-05 Smoke-test the API as a PostSync hook**
-  Replaces `test-live-apis.ps1`. A failing hook marks the sync failed.
+- [x] **S05-05 Smoke-test the API as a PostSync hook**
+  The shared chart gets `smokeTest`: a PostSync hook Job (`curlimages/curl`, a shell script in a ConfigMap) that signs in through the identity service and checks a list of `GET`s through the Service, with status and an optional text in the body. The logistics app checks readiness, `/api/v1/me` with and without a token, warehouses and ASNs, as `nexus.planner` (Secret `smoke-test-user`). Only reads, so a sync leaves no data behind.
+  Port: `test-live-apis.ps1` (its read checks; the writes stay in the guide's walkthrough).
+  Done when: a sync of `logistics-app` ends with the smoke test Job `Succeeded`, and a check changed to expect another tenant turns the sync `Failed`.
 
 ## S6 — TMS and in-process events
 

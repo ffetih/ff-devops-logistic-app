@@ -216,6 +216,7 @@ Three pull requests:
 | A | S05-00 … S05-02 | A merge shows up as OutOfSync within about a minute; the new image rolls out as a canary, with no new tables |
 | B | S05-03 … S05-04 | The PreSync hook applies `V2` and `V3`; warehouses, bin locations, ASNs and pallets with SSCC labels work with a token |
 | C | S05-05 … S05-06 | A sync runs the smoke test after the canary finishes, and fails when the API does not answer; the canary analysis runs without the error measurement |
+| fix | S05-07 … S05-08 | The smoke test passes on the first sync; the canary waits for a warm pod |
 
 - [x] **S05-00 Poll Git every minute**
   `timeout.reconciliation: 60s` (jitter 10 s) in `argocd-cm`, and `requeueAfterSeconds: 60` on the ApplicationSet's Git generator. The controller and the repo server read the value only at start, so their pod templates carry it as an annotation: the sync that changes the value restarts them.
@@ -243,6 +244,9 @@ Three pull requests:
 - [x] **S05-06 Wait before the first canary measurement**
   `initialDelay: 10s` on the release analysis. Every analysis run so far showed `✓ 3, ⚠ 1`: one measurement ended in an error, not a failure, most likely a call through the canary Service before its endpoints held the new pod.
   Done when: the next canary's analysis run shows `✓ 3` and no `⚠`.
+- [x] **S05-07 Call the service by its short name in the smoke test**
+  The first smoke test failed on its first check only: `Could not resolve host: logistics-app.ff-logistics.svc.cluster.local`, while `identity:8085` and every later call to the same name worked. A full name without a trailing dot goes through every search domain first, and the musl resolver in the Alpine curl image gives up when one of those lookups fails. The Job runs in the service's namespace, so `http://<name>:<port>` is enough and resolves on the first try.
+  Done when: a sync of `logistics-app` ends with the smoke test Job `Succeeded`.
 
 ## S6 — TMS and in-process events
 

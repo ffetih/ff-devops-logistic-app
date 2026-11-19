@@ -14,5 +14,8 @@ public enum ShipmentStatus {
     PICKED_UP,
 
     /** The first leg has left the origin. */
-    DEPARTED
+    DEPARTED,
+
+    /** The consignee has signed for the goods. The end: nothing comes after it. */
+    DELIVERED
 }

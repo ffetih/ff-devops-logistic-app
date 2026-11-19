@@ -276,8 +276,10 @@ Goal: shipments from planning to delivery, and the first event between modules, 
   `POST …/pickup` and `…/departure` move a shipment forward and record the time (`V5__tms_shipment_progress.sql`, two nullable columns: the shipments planned before keep working). Forward only: a step may be left out, never repeated or taken back (`409 shipment-status-conflict`).
   Absorbs: `59e4bc4`, `V10`.
   Done when: the walkthrough's shipment goes to `PICKED_UP` and `DEPARTED`, and a second pickup answers `409`.
-- [ ] **S06-05 Confirm delivery once under concurrency**
+- [x] **S06-05 Confirm delivery once under concurrency**
+  `POST …/delivery` with who signed for the goods; `DELIVERED` ends the lifecycle. `V6__tms_shipment_delivery.sql` adds the delivery columns and a `version` (`NOT NULL DEFAULT 0`, so existing shipments start at 0): optimistic locking, so of two confirmations that read the shipment at the same time only one commits. A test plays the race out step by step with two transactions; against PostgreSQL, four parallel confirmations give one `200` and three `409 concurrent-update`.
   Absorbs: `b6b8378`, `V5`, `V8`.
+  Done when: the walkthrough's four parallel confirmations answer one `200` and three `409`.
 - [ ] **S06-06 Create one shipment per customer order number**
   Absorbs: `ee69a9c`, `V9`.
 - [ ] **S06-07 Publish ShipmentDelivered through the event publication registry**

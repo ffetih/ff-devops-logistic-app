@@ -18,6 +18,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -90,6 +91,19 @@ public class Shipment extends TenantAwareEntity {
     private Instant pickedUpAt;
 
     private Instant departedAt;
+
+    private Instant deliveredAt;
+
+    @Column(length = 140)
+    private String receivedBy;
+
+    /**
+     * Optimistic lock: two requests that read the same shipment and both change it cannot both
+     * commit. The second fails, so a shipment is delivered once even when two drivers' apps
+     * confirm at the same moment.
+     */
+    @Version
+    private long version;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "shipment_id", nullable = false)
@@ -183,6 +197,13 @@ public class Shipment extends TenantAwareEntity {
         departedAt = at;
     }
 
+    /** The consignee has signed for the goods; {@code receivedBy} is the name under the signature. */
+    public void deliver(Instant at, String receivedBy) {
+        advanceTo(ShipmentStatus.DELIVERED);
+        deliveredAt = at;
+        this.receivedBy = receivedBy.trim();
+    }
+
     /** Forward only: the target must come after the current status. */
     private void advanceTo(ShipmentStatus target) {
         if (target.compareTo(status) <= 0) {
@@ -265,6 +286,14 @@ public class Shipment extends TenantAwareEntity {
 
     public Instant getDepartedAt() {
         return departedAt;
+    }
+
+    public Instant getDeliveredAt() {
+        return deliveredAt;
+    }
+
+    public String getReceivedBy() {
+        return receivedBy;
     }
 
     public List<TransportLeg> getLegs() {

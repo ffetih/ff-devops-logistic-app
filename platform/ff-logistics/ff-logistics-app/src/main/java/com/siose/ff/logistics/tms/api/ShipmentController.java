@@ -1,6 +1,7 @@
 package com.siose.ff.logistics.tms.api;
 
 import com.siose.ff.logistics.tms.service.ShipmentService;
+import com.siose.ff.logistics.tms.service.ShipmentService.Delivery;
 import com.siose.ff.logistics.tms.service.ShipmentService.NewShipment;
 import com.siose.ff.logistics.tms.service.ShipmentService.ShipmentView;
 import jakarta.validation.Valid;
@@ -43,6 +44,12 @@ public class ShipmentController {
     @PostMapping("/{id}/departure")
     public ShipmentView depart(@PathVariable UUID id) {
         return service.depart(id);
+    }
+
+    /** The consignee has signed. Once only: a second confirmation answers 409. */
+    @PostMapping("/{id}/delivery")
+    public ShipmentView deliver(@PathVariable UUID id, @Valid @RequestBody Delivery delivery) {
+        return service.deliver(id, delivery);
     }
 
     @GetMapping

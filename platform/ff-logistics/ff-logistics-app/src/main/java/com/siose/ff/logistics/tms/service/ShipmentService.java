@@ -58,7 +58,11 @@ public class ShipmentService {
     public record ShipmentView(UUID id, String tenantId, String shipmentNumber, String ecmrNumber,
             String consignorName, String consigneeName, String equipmentCode, String sscc, Incoterm incoterm,
             String origin, String destination, double grossWeightKg, ShipmentStatus status, Instant pickedUpAt,
-            Instant departedAt, FootprintView footprint, List<LegView> legs, Instant createdAt) {
+            Instant departedAt, Instant deliveredAt, String receivedBy, FootprintView footprint, List<LegView> legs,
+            Instant createdAt) {
+    }
+
+    public record Delivery(@NotBlank @Size(max = 140) String receivedBy) {
     }
 
     public record FootprintView(double totalDistanceKm, double co2eKg, double roadOnlyCo2eKg, double savedCo2eKg,
@@ -98,6 +102,19 @@ public class ShipmentService {
         return view(shipment);
     }
 
+    /**
+     * Once, also under concurrency. A second confirmation after the first has committed sees
+     * {@code DELIVERED} and is refused by the lifecycle (409 shipment-status-conflict). One that
+     * read the shipment before the first committed fails at its own commit, on the version
+     * (409 concurrent-update). Either way the shipment is delivered exactly once.
+     */
+    @Transactional
+    public ShipmentView deliver(UUID id, Delivery delivery) {
+        Shipment shipment = shipment(id);
+        shipment.deliver(Instant.now(), delivery.receivedBy());
+        return view(shipment);
+    }
+
     @Transactional(readOnly = true)
     public List<ShipmentView> list() {
         return shipments.findAllByOrderByCreatedAtDesc().stream().map(ShipmentService::view).toList();
@@ -117,7 +134,7 @@ public class ShipmentService {
         return new ShipmentView(s.getId(), s.getTenantId(), s.getShipmentNumber(), s.getEcmrNumber(),
                 s.getConsignorName(), s.getConsigneeName(), s.getEquipmentCode(), s.getSscc(), s.getIncoterm(),
                 s.getOrigin(), s.getDestination(), s.getGrossWeightKg(), s.getStatus(), s.getPickedUpAt(),
-                s.getDepartedAt(), new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
+                s.getDepartedAt(), s.getDeliveredAt(), s.getReceivedBy(), new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
                         s.getReductionPercent()),
                 s.getLegs().stream().map(ShipmentService::view).toList(), s.getCreatedAt());
     }

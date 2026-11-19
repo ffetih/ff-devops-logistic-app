@@ -307,6 +307,7 @@ hide methods
 skinparam classAttributeIconSize 0
 class Shipment {
   {field} shipmentNumber : SHP-10001 (from tms_shipment_seq)
+  {field} customerOrderReference (unique per tenant)
   {field} ecmrNumber : ECMR-10001
   consignorName, consigneeName
   {field} equipmentCode : ISO 6346
@@ -315,7 +316,10 @@ class Shipment {
   origin, destination
   grossWeightKg
   {field} footprint : distance, CO2e, road only, saved, %
-  status : PLANNED
+  {field} status : see the lifecycle
+  pickedUpAt, departedAt, deliveredAt
+  receivedBy
+  version
 }
 class TransportLeg {
   sequenceNo
@@ -335,6 +339,65 @@ Incoterm:: Who pays which part of the journey and where the risk passes, from th
 Route:: The legs in order. The first starts at the shipment's origin, each next one where the previous ended, the last ends at the destination; a gap is refused with the leg that breaks the chain.
 Footprint:: EN 16258 from `standards`, calculated when the shipment is planned and kept: a later change of emission factors does not rewrite what a customer was told.
 
+[[customer-order]]
+=== One shipment per customer order number
+
+A client that sends `POST /shipments` and gets no answer, a timeout, a dropped connection, cannot know whether the shipment was created. With a `customerOrderReference`, its own order number, it can simply send the same request again:
+
+[cols="3,2",options="header"]
+|===
+| The order number is | Answer
+
+| not given | `201`, a new shipment every time
+| new for this tenant | `201`, the new shipment
+| known, and the plan is the same | `200`, the shipment created the first time
+| known, but with another plan | `409 customer-order-conflict`: another order needs another number
+|===
+
+The hard case is two such retries arriving at the same moment: both look, both find nothing, both insert. The unique index `(tenant_id, customer_order_reference)` lets only one insert commit. The other fails, its transaction is rolled back, and a second, fresh transaction reads the winner and answers `200` with it. Eight identical requests in parallel against PostgreSQL get one `201` and seven `200`, all for the same shipment.
+
+Every losing insert had already taken a shipment number, so the numbers then have gaps (`SHP-10001`, then `SHP-10010`). A gap is allowed; a number given twice is not.
+
+[[shipment-lifecycle]]
+=== Lifecycle
+
+[plantuml,tms-lifecycle,svg]
+----
+@startuml
+hide empty description
+[*] --> PLANNED : POST /shipments
+PLANNED --> PICKED_UP : POST …/pickup
+PICKED_UP --> DEPARTED : POST …/departure
+PLANNED --> DEPARTED : POST …/departure\n(pickup not reported)
+DEPARTED --> DELIVERED : POST …/delivery\n{"receivedBy": …}
+DELIVERED --> [*]
+@enduml
+----
+
+A shipment only moves forward. A step may be left out, because not every carrier reports every scan, but never repeated or taken back: a pickup after the departure answers `409 shipment-status-conflict`. Each step records its time (`pickedUpAt`, `departedAt`); a step that was left out keeps no time.
+
+The delivery records who signed for the goods at the consignee, the name under the e-CMR's "goods received", and is the end: nothing comes after it.
+
+[[delivered-once]]
+==== Delivered once, also at the same moment
+
+Two drivers' apps can confirm the same delivery within milliseconds. The lifecycle alone would not stop that: both requests read `DEPARTED`, both see that `DELIVERED` comes next, both write. The shipment therefore carries a `version`, and Hibernate makes every update conditional on it:
+
+[source,text]
+----
+request A                                     request B
+read SHP-10001: DEPARTED, version 1           read SHP-10001: DEPARTED, version 1
+UPDATE … SET status='DELIVERED', version=2
+  WHERE id=… AND version=1      → 1 row
+commit                                        UPDATE … SET status='DELIVERED', version=2
+                                                WHERE id=… AND version=1   → 0 rows
+200 DELIVERED                                 409 concurrent-update (nothing changed)
+----
+
+A confirmation that arrives after the first has committed reads `DELIVERED` and is refused by the lifecycle instead (`409 shipment-status-conflict`). Either way the shipment is delivered exactly once; with four confirmations sent in parallel against PostgreSQL, one answers `200` and three `409 concurrent-update`.
+
+This is optimistic locking: nothing is locked while a request works, and a conflict is found at the write. The WMS uses the other kind for receiving (<<receiving>>): a row lock that makes the second scanner wait. A wait suits receiving, where the second pallet is still valid and only has to come after the first; a refusal suits delivery, where the second confirmation is a duplicate.
+
 === API
 
 All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
@@ -343,7 +406,9 @@ All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
 |===
 | Request | Does | Refused with
 
-| `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED` | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode)
+| `POST /api/v1/tms/shipments/{id}/pickup`, `/departure` | Moves the shipment one step on (<<shipment-lifecycle>>) | `409 shipment-status-conflict`
+| `POST /api/v1/tms/shipments/{id}/delivery` | Delivers it, with `{"receivedBy": "…"}` (<<delivered-once>>) | `409 shipment-status-conflict`, `409 concurrent-update`
+| `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED`. `201`, or `200` with the existing shipment for a known `customerOrderReference` and the same plan (<<customer-order>>) | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode), `409 customer-order-conflict`
 | `GET /api/v1/tms/shipments`, `/{id}` | The tenant's shipments, newest first | `404` for another tenant's id
 |===
 
@@ -364,6 +429,19 @@ curl -s localhost:8081/api/v1/tms/shipments -H "$AUTH" -H 'Content-Type: applica
 ----
 
 The answer carries `SHP-10001`, `ECMR-10001` and a footprint of 1606.22 kg CO~2~e against 3519.12 kg by road only, 54.36 % less.
+
+Then move it along, with its id from the answer:
+
+[source,bash]
+----
+SHP=$(curl -s localhost:8081/api/v1/tms/shipments -H "$AUTH" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+curl -s -X POST localhost:8081/api/v1/tms/shipments/$SHP/pickup -H "$AUTH"; echo
+curl -s -X POST localhost:8081/api/v1/tms/shipments/$SHP/departure -H "$AUTH"; echo
+for driver in A B C D; do      # four confirmations at once: one 200, the others 409
+  curl -s -o /dev/null -w "%{http_code} " localhost:8081/api/v1/tms/shipments/$SHP/delivery -H "$AUTH" \
+    -H 'Content-Type: application/json' -d '{"receivedBy": "Driver '$driver'"}' &
+done; wait; echo
+----
 
 [[roles]]
 == Roles

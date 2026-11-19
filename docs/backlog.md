@@ -259,23 +259,32 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 | :--- | :--- | :--- |
 | A | S06-01 | The PreSync hook applies `V4`; a shipment with three legs comes back numbered, with its CO2e; the smoke test checks the shipment list |
 | fix | S06-02 | Every sync's smoke test result is its own |
-| B | S06-03 … S06-05 | The lifecycle: pickup, departure, delivery; one shipment per customer order number; two deliveries at once give one success and one `409` |
-| C | S06-06 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
+| B | S06-03 … S06-06 | The lifecycle: pickup, departure, delivery; two deliveries at once give one success and one `409`; one shipment per customer order number |
+| C | S06-07 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
 
 - [x] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
   The `tms` module and its first tables (`V4__tms_init.sql`): a shipment numbered from `tms_shipment_seq` (`SHP-10001`, e-CMR `ECMR-10001`), with consignor, consignee, an ISO 6346 equipment code, the SSCC it carries and an Incoterm, and its legs in order. The legs must form one chain from origin to destination. The EN 16258 footprint from `standards` is calculated when the shipment is planned and kept. The smoke test now also lists shipments.
   Port: `logistics/tms`, `V2__tms_init.sql` (renamed: `tms_shipments`; the e-CMR PDF comes with documents in S7).
   Done when: after the sync, the hook has applied `V4`, and the walkthrough's shipment comes back with 1606.22 kg CO2e.
 - [x] **S06-02 Give every hook Job its own name**
-  The sync that rolled out S06-01 was reported `Failed` ("Job has reached the specified backoff limit"), and so was the next one, while the smoke test Job that sync had created passed in 3 seconds. Both hook Jobs had a fixed name and `BeforeHookCreation`: each sync deleted the previous Job and created one with the same name, and Argo CD could read the old one, failed and not yet gone, as this sync's hook. Now `generateName` gives every run a new name, and `ttlSecondsAfterFinished` (a day) cleans up, so failed runs keep their logs too.
+  The sync that rolled out S06-01 was reported `Failed` ("Job has reached the specified backoff limit"), and so was the next one, while the smoke test Job that sync had created passed in 3 seconds. Both hook Jobs had a fixed name and `BeforeHookCreation`: each sync deleted the previous Job and created one with the same name, and Argo CD could read the old one, failed and not yet gone, as this sync's hook (why it was not gone: S06-03). Now `generateName` gives every run a new name, and `ttlSecondsAfterFinished` (a day) cleans up, so failed runs keep their logs too.
   Done when: two syncs in a row both end `Succeeded`, each with its own smoke test Job.
-- [ ] **S06-03 Confirm delivery once under concurrency**
-  Absorbs: `b6b8378`, `V5`, `V8`.
-- [ ] **S06-04 Create one shipment per customer order number**
-  Absorbs: `ee69a9c`, `V9`.
-- [ ] **S06-05 Record pickup and departure**
+- [x] **S06-03 Name the hook finalizer as the cause**
+  S06-02 explained the stale hook as a deletion that "takes a moment". The cause is a finalizer: Argo CD 3 puts `argocd.argoproj.io/hook-finalizer` on every hook resource and removes it only once it has read the hook's result. A Job left by an earlier sync keeps it, so deleting the Job never finishes: it stays, with a deletion time, under the same name, and Argo CD read its old `Failed`. The same finalizer made `kubectl delete job` hang when the two fixed-name Jobs were removed by hand. The README now says so and shows how to remove such a Job.
+  Done when: the README explains the finalizer next to `generateName`.
+- [x] **S06-04 Record pickup and departure**
+  `POST …/pickup` and `…/departure` move a shipment forward and record the time (`V5__tms_shipment_progress.sql`, two nullable columns: the shipments planned before keep working). Forward only: a step may be left out, never repeated or taken back (`409 shipment-status-conflict`).
   Absorbs: `59e4bc4`, `V10`.
-- [ ] **S06-06 Publish ShipmentDelivered through the event publication registry**
+  Done when: the walkthrough's shipment goes to `PICKED_UP` and `DEPARTED`, and a second pickup answers `409`.
+- [x] **S06-05 Confirm delivery once under concurrency**
+  `POST …/delivery` with who signed for the goods; `DELIVERED` ends the lifecycle. `V6__tms_shipment_delivery.sql` adds the delivery columns and a `version` (`NOT NULL DEFAULT 0`, so existing shipments start at 0): optimistic locking, so of two confirmations that read the shipment at the same time only one commits. A test plays the race out step by step with two transactions; against PostgreSQL, four parallel confirmations give one `200` and three `409 concurrent-update`.
+  Absorbs: `b6b8378`, `V5`, `V8`.
+  Done when: the walkthrough's four parallel confirmations answer one `200` and three `409`.
+- [x] **S06-06 Create one shipment per customer order number**
+  An optional `customerOrderReference` makes `POST /shipments` safe to repeat: the same number with the same plan answers `200` with the existing shipment, with another plan `409 customer-order-conflict`. `V7` adds the column and a unique index per tenant. Two retries at the same moment: the index lets one insert commit, and the loser reads the winner in a fresh transaction. The plan is checked and compared before it takes a shipment number. Against PostgreSQL, eight parallel identical requests give one `201` and seven `200`.
+  Absorbs: `ee69a9c`, `V9`.
+  Done when: the same request with an order number, sent twice, answers `201` and then `200` with the same shipment.
+- [ ] **S06-07 Publish ShipmentDelivered through the event publication registry**
   Absorbs: `2019e11`, `V7`, `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup), `59d8170` (listener concurrency).
 
 ## S7 — Geo and documents

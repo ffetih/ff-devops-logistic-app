@@ -7,6 +7,7 @@ import com.siose.ff.logistics.tms.domain.Incoterm;
 import com.siose.ff.logistics.tms.domain.Shipment;
 import com.siose.ff.logistics.tms.domain.ShipmentRepository;
 import com.siose.ff.logistics.tms.domain.ShipmentStatus;
+import com.siose.ff.logistics.tms.domain.TmsConflictException;
 import com.siose.ff.logistics.tms.domain.TransportLeg;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -16,9 +17,13 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Shipments of the caller's tenant: planning them and reading them back. */
 @Service
@@ -29,13 +34,17 @@ public class ShipmentService {
 
     private final ShipmentRepository shipments;
     private final DatabaseSequences sequences;
+    private final TransactionTemplate transactions;
 
-    ShipmentService(ShipmentRepository shipments, DatabaseSequences sequences) {
+    ShipmentService(ShipmentRepository shipments, DatabaseSequences sequences,
+            PlatformTransactionManager transactionManager) {
         this.shipments = shipments;
         this.sequences = sequences;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     public record NewShipment(
+            @Size(max = 64) String customerOrderReference,
             @NotBlank @Size(max = 140) String consignorName,
             @NotBlank @Size(max = 140) String consigneeName,
             @NotBlank String equipmentCode,
@@ -55,10 +64,19 @@ public class ShipmentService {
             @NotBlank @Size(max = 60) String carrierReference) {
     }
 
-    public record ShipmentView(UUID id, String tenantId, String shipmentNumber, String ecmrNumber,
+    /** The shipment, and whether this request created it or found it from an earlier one. */
+    public record PlanResult(ShipmentView shipment, boolean created) {
+    }
+
+    public record ShipmentView(UUID id, String tenantId, String shipmentNumber, String customerOrderReference,
+            String ecmrNumber,
             String consignorName, String consigneeName, String equipmentCode, String sscc, Incoterm incoterm,
-            String origin, String destination, double grossWeightKg, ShipmentStatus status, FootprintView footprint,
-            List<LegView> legs, Instant createdAt) {
+            String origin, String destination, double grossWeightKg, ShipmentStatus status, Instant pickedUpAt,
+            Instant departedAt, Instant deliveredAt, String receivedBy, FootprintView footprint, List<LegView> legs,
+            Instant createdAt) {
+    }
+
+    public record Delivery(@NotBlank @Size(max = 140) String receivedBy) {
     }
 
     public record FootprintView(double totalDistanceKm, double co2eKg, double roadOnlyCo2eKg, double savedCo2eKg,
@@ -70,18 +88,77 @@ public class ShipmentService {
     }
 
     /**
-     * A refused plan takes no shipment number. A gap in the numbers can still happen (the insert
-     * fails after the number was taken), and is allowed; a number used twice is not.
+     * Plans a shipment, or finds the one this customer order number already has.
+     *
+     * <p>Not one transaction on purpose. Two requests with the same new order number can both
+     * find nothing and both insert; the unique index lets only one commit. The other fails in its
+     * own transaction, which is rolled back, and a second transaction reads the winner and
+     * answers with it. A rolled-back transaction cannot read anything, hence the two.
+     *
+     * <p>A refused or repeated plan takes no shipment number. A gap in the numbers still happens
+     * when an insert fails after taking one, and is allowed; a number used twice is not.
      */
-    @Transactional
-    public ShipmentView plan(NewShipment request) {
-        Shipment.Plan plan = new Shipment.Plan(request.consignorName(), request.consigneeName(),
-                request.equipmentCode(), request.sscc(), request.incoterm(), request.origin(), request.destination(),
-                request.grossWeightKg(), request.legs().stream()
+    public PlanResult plan(NewShipment request) {
+        Shipment candidate = Shipment.plan(new Shipment.Plan(request.customerOrderReference(),
+                request.consignorName(), request.consigneeName(), request.equipmentCode(), request.sscc(),
+                request.incoterm(), request.origin(), request.destination(), request.grossWeightKg(),
+                request.legs().stream()
                         .map(leg -> new Shipment.PlannedLeg(leg.mode(), leg.origin(), leg.destination(),
                                 leg.distanceKm(), leg.carrierReference()))
-                        .toList());
-        return view(shipments.save(Shipment.plan(plan, () -> sequences.next(SHIPMENT_SEQUENCE))));
+                        .toList()));
+        String reference = candidate.getCustomerOrderReference();
+        if (reference == null) {
+            return transactions.execute(status -> new PlanResult(view(insert(candidate)), true));
+        }
+        try {
+            return transactions.execute(status -> existing(reference, candidate)
+                    .orElseGet(() -> new PlanResult(view(insert(candidate)), true)));
+        } catch (DataIntegrityViolationException lostRace) {
+            return transactions.execute(status -> existing(reference, candidate).orElseThrow(() -> lostRace));
+        }
+    }
+
+    /** The order number is known: the same plan again gets its shipment, another plan a 409. */
+    private Optional<PlanResult> existing(String reference, Shipment candidate) {
+        return shipments.findByCustomerOrderReference(reference).map(shipment -> {
+            if (!shipment.samePlanAs(candidate)) {
+                throw TmsConflictException.customerOrderTaken(reference, shipment.getShipmentNumber());
+            }
+            return new PlanResult(view(shipment), false);
+        });
+    }
+
+    /** saveAndFlush: a clash on the order number shows here, inside the transaction, not at its end. */
+    private Shipment insert(Shipment candidate) {
+        candidate.assignNumber(sequences.next(SHIPMENT_SEQUENCE));
+        return shipments.saveAndFlush(candidate);
+    }
+
+    @Transactional
+    public ShipmentView pickUp(UUID id) {
+        Shipment shipment = shipment(id);
+        shipment.pickUp(Instant.now());
+        return view(shipment);
+    }
+
+    @Transactional
+    public ShipmentView depart(UUID id) {
+        Shipment shipment = shipment(id);
+        shipment.depart(Instant.now());
+        return view(shipment);
+    }
+
+    /**
+     * Once, also under concurrency. A second confirmation after the first has committed sees
+     * {@code DELIVERED} and is refused by the lifecycle (409 shipment-status-conflict). One that
+     * read the shipment before the first committed fails at its own commit, on the version
+     * (409 concurrent-update). Either way the shipment is delivered exactly once.
+     */
+    @Transactional
+    public ShipmentView deliver(UUID id, Delivery delivery) {
+        Shipment shipment = shipment(id);
+        shipment.deliver(Instant.now(), delivery.receivedBy());
+        return view(shipment);
     }
 
     @Transactional(readOnly = true)
@@ -91,15 +168,20 @@ public class ShipmentService {
 
     @Transactional(readOnly = true)
     public ShipmentView get(UUID id) {
-        return view(shipments.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Shipment " + id + " not found")));
+        return view(shipment(id));
+    }
+
+    private Shipment shipment(UUID id) {
+        return shipments.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Shipment " + id + " not found"));
     }
 
     private static ShipmentView view(Shipment s) {
-        return new ShipmentView(s.getId(), s.getTenantId(), s.getShipmentNumber(), s.getEcmrNumber(),
+        return new ShipmentView(s.getId(), s.getTenantId(), s.getShipmentNumber(), s.getCustomerOrderReference(),
+                s.getEcmrNumber(),
                 s.getConsignorName(), s.getConsigneeName(), s.getEquipmentCode(), s.getSscc(), s.getIncoterm(),
-                s.getOrigin(), s.getDestination(), s.getGrossWeightKg(), s.getStatus(),
-                new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
+                s.getOrigin(), s.getDestination(), s.getGrossWeightKg(), s.getStatus(), s.getPickedUpAt(),
+                s.getDepartedAt(), s.getDeliveredAt(), s.getReceivedBy(), new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
                         s.getReductionPercent()),
                 s.getLegs().stream().map(ShipmentService::view).toList(), s.getCreatedAt());
     }

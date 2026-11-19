@@ -325,12 +325,13 @@ Sync      Rollout, Services, ...      new pods start with SPRING_FLYWAY_ENABLED=
 
 ```bash
 argocd app sync logistics-app
-kubectl -n ff-logistics get jobs
-kubectl -n ff-logistics logs job/logistics-app-migrate
+kubectl -n ff-logistics get jobs --sort-by=.metadata.creationTimestamp
+kubectl -n ff-logistics logs $(kubectl -n ff-logistics get jobs -l app.kubernetes.io/name=logistics-app-migrate \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)      # the newest run
 kubectl -n ff-logistics exec deploy/postgres -- psql -U fflogistics -d ff_logistics -c 'select version, description, success from flyway_schema_history'
 ```
 
-The Job of the last sync stays until the next one replaces it (`BeforeHookCreation`), so its log can be read afterwards. The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
+Every sync creates a new Job with a generated name (`logistics-app-migrate-x7k2p`), and Kubernetes deletes each one a day after it finishes (`ttlSecondsAfterFinished`), passed or failed, so the logs of the last day's runs can be read. A fixed name would be reused by every sync, and Argo CD could then read the Job left by the sync before, still being deleted, as this sync's result (S06-02). The hook runs on every sync, also when only values changed; Flyway then finds nothing to do and the Job ends in seconds.
 
 While the hook runs, and through a whole canary, the old version keeps serving on the new schema. A migration therefore has to work for both versions: add a column or a table first, use it in the next release, remove the old one a release later (expand, then contract).
 
@@ -356,7 +357,8 @@ The checks are values (`smokeTest.checks`), the script is `curl` and `sh` in the
 
 ```bash
 argocd app sync logistics-app                     # waits for the canary, then the smoke test
-kubectl -n ff-logistics logs job/logistics-app-smoke-test
+kubectl -n ff-logistics logs $(kubectl -n ff-logistics get jobs -l app.kubernetes.io/name=logistics-app-smoke-test \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)
 ```
 
 The canary analysis and the smoke test answer different questions. The analysis asks one canary pod, before it takes more traffic, whether this release may go on; the smoke test asks the Service, after the release has all traffic, whether the API works end to end: token, identity, database. A canary that aborts never becomes Healthy, so the smoke test does not run on it.

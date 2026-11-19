@@ -51,6 +51,10 @@ rollout:
 # Schema migrations as an Argo CD PreSync hook: before the new pods start, a Job runs the
 # same image with this Spring profile, migrates and exits. The pods then run without Flyway.
 # The old version keeps serving while the hook runs, so a migration has to work for both.
+# The hook Jobs (migration, smoke test) get a new name on every sync and are deleted by
+# Kubernetes this long after they finish, passed or failed: a day to read their logs.
+hookJobTtlSeconds: 86400
+
 migration:
   enabled: false
   profile: migrate

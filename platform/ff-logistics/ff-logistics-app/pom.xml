@@ -35,10 +35,15 @@
             <artifactId>siose-ff-base-security</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- RFC 9457 problems; the modules throw its exceptions (not found, conflict) -->
         <dependency>
             <groupId>com.siose.ff</groupId>
             <artifactId>siose-ff-base-web</artifactId>
-            <scope>runtime</scope>
+        </dependency>
+        <!-- Entities extend TenantAwareEntity: Hibernate adds tenant_id = ? to every query -->
+        <dependency>
+            <groupId>com.siose.ff</groupId>
+            <artifactId>siose-ff-base-persistence</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -56,6 +61,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
         <!-- @ApplicationModule in each module's package-info.java, nothing at runtime. The
              starters (event publication registry and the rest) come when a module needs them. -->

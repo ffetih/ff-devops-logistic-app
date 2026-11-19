@@ -13,6 +13,12 @@ spring:
     url: ${LOGISTICS_DB_URL:jdbc:postgresql://localhost:5432/ff_logistics}
     username: ${LOGISTICS_DB_USERNAME:fflogistics}
     password: ${LOGISTICS_DB_PASSWORD:fflogisticsDb2026}
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks at start that the entities match it.
+      ddl-auto: validate
+    # A request's database work happens in its service call, not while the response is written.
+    open-in-view: false
   flyway:
     # Scripts in db/migration. Module tables carry the module's prefix (wms_, tms_, geo_, rep_).
     enabled: true

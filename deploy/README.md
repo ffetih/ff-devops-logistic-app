@@ -388,6 +388,8 @@ curl -s localhost:8081/api/v1/me -H "Authorization: Bearer $TOKEN"; echo   # ten
 
 `geodispatch.operator` gets `ff-tr-distribution` instead: same app, same endpoint, another tenant. Probes, the canary analysis (`/actuator/health/release`) and `/actuator/info` stay open.
 
+The WMS endpoints, with a walkthrough on the cluster, are in the Logistics App Guide (`docs/src/logistics/logistics-guide.adoc`, section "Warehouse management").
+
 From IntelliJ with the `local` profile, `X-Tenant-Id` stands in for a token:
 
 ```text

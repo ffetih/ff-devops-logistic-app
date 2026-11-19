@@ -3,6 +3,7 @@
 -- scripts create them.
 CREATE SEQUENCE IF NOT EXISTS wms_sscc_serial_seq START WITH 100001 INCREMENT BY 1;
 CREATE SEQUENCE IF NOT EXISTS tms_shipment_seq START WITH 10001 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS geo_route_seq START WITH 5001 INCREMENT BY 1;
 
 -- Spring Modulith's event publication registry (V8__event_publication.sql), for H2.
 CREATE TABLE IF NOT EXISTS event_publication (

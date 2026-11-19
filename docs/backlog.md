@@ -307,12 +307,26 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 
 ## S7 — Geo and documents
 
-- [ ] **S07-01 Add territories and route plans**
-  Absorbs: `e9580b7` (duplicate stop codes), `c2c8c8a` (99 stops), `V3`.
-- [ ] **S07-02 Estimate travel with Haversine or OSRM**
-  Absorbs: `59d8170` (OSRM timeout).
-- [ ] **S07-03 Order routes with time windows using Timefold**
-  Absorbs: `da10b36`, `0a4b9c0`.
+Goal: a dispatcher plans a van's day, stops in driving order with arrival times, also against time windows; and every document (proof of delivery, e-CMR) gets a place in an S3 store that the client writes to and reads from directly, once.
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S07-01 … S07-03 | The PreSync hook applies `V10` and `V11`; a territory and a route of four stops come back in driving order with arrival times; stops with time windows are met, or the route is refused |
+| B | S07-04 … S07-06 | RustFS runs from its upstream chart; a stop's proof of delivery is uploaded through a link, once, and read back through another |
+
+- [x] **S07-01 Add territories and route plans**
+  The `geo` module (`V10__geo_init.sql`). A territory: a hub with a valid GLN, a circle around a centre, its delivery points and weekly visits, and the workload balance score from those. A route plan: one vehicle from a depot, numbered from `geo_route_seq` (`RTE-5001`), its stops in nearest-neighbour order with the distance from the stop before and the arrival time in minutes after departure. Before any planning: at most 99 stops (`GEO_MAX_STOPS`), a territory of the tenant, every stop code once as a file name would write it, the load within the capacity. Distances: the straight line (`GeoDistance` in `standards`, haversine) times 1.24. The smoke test lists territories and routes.
+  Port: `logistics/geo`, `V3__geo_init.sql` (renamed: `geo_route_plans`, `route_number`, `arrival_minutes`; the e-POD column comes with documents in S07-06, the OpenTripModel export and the `TerritoryCreated`/`RoutePlanned` events when a reader needs them).
+  Absorbs: `e9580b7` (duplicate stop codes), `c2c8c8a` (99 stops).
+  Done when: after the sync, the hook has applied `V10`, and the walkthrough's route comes back as Esenyurt, Bakirkoy, Besiktas, Kadikoy, 56.17 km and 146 minutes.
+- [x] **S07-02 Ask OSRM for road distances when one is configured**
+  With `GEO_ROAD_MATRIX=osrm`, the route planner takes distances and drive times from an OSRM server's table service, one request per route, instead of the estimate. Connect and read timeouts (2 s, 5 s); the coordinates written into the path unencoded; no compressed answers. No server, a timeout, a refused table or a point without a road answer `503 road-matrix-unavailable` and store nothing. The cluster keeps the estimate: OSRM needs a prepared map; the guide shows how to run one for the IDE.
+  Absorbs: `59d8170` (OSRM timeouts), the OSRM client fixes of `b851603` (coordinates not URL-encoded, no compressed answers). The road lines for a map (`roadLegs`) come with the map in S10-04.
+  Done when: the tests against a stand-in OSRM pass in CI: the matrix read in km and minutes, the path unencoded, and 503 for each failure, a stalled server within the timeout.
+- [x] **S07-03 Order routes with time windows using Timefold**
+  A stop may have a time window, `readyMinutes` and `dueMinutes` after departure (`V11`, both or neither). A vehicle that comes early waits. Up to 8 stops without windows keep nearest neighbour; any window, or more stops, go to Timefold: one tour, hard one point per minute late, soft one point per metre. It stops after 0.2 s without improvement, at the latest after 1 s. Late in the best order found: `400`. Timefold 2.8.0 is managed in the base BOM.
+  Absorbs: `da10b36`, `0a4b9c0` (unimproved limit, version in the BOM).
+  Done when: after the sync, the hook has applied `V11`, and the walkthrough's two-stop route with a window at Kadikoy comes back Kadikoy first, at minute 64.
 - [ ] **S07-04 Add the storage library**
   Port: `base/ff-base-storage`.
   Absorbs: `d0f3003` (write once), `4e28bff` (document links).

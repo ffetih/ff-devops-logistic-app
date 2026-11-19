@@ -32,7 +32,7 @@ package "logistics-app" {
   [standards] as standards
   [wms] as wms
   [tms] as tms
-  [geo (S7)] as geo
+  [geo] as geo
   [reporting] as reporting
 }
 wms --> standards
@@ -48,9 +48,10 @@ reporting ..> tms : events
 
 | `caller` | nothing | `GET /api/v1/me`: the tenant, user and roles the app took from the token
 | `release` | nothing | The `releaseSwitch` health contributor read by the canary analysis
-| `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions (<<standards>>)
+| `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions, great-circle distances (<<standards>>)
 | `wms` | `standards` | Warehouses, bin locations, inbound ASNs (<<wms>>)
 | `tms` | `standards` | Shipments with their legs, e-CMR number and CO~2~e footprint (<<tms>>)
+| `geo` | `standards` | Territories, and route plans with their stops in driving order (<<geo>>)
 | `reporting` | `tms` (its events only) | Its own copy of delivered shipments, filled from `ShipmentDelivered` (<<events>>)
 |===
 
@@ -85,6 +86,7 @@ A rule that a GS1 or ISO document defines is written once, here, and tested agai
 | `Gs1Standards` | GS1 General Specifications: Modulo-10 check digit | Warehouse and site numbers (GLN-13), trade items (GTIN), pallet labels (SSCC-18)
 | `Iso6346ContainerCode` | ISO 6346: owner code, category, serial, Modulo-11 check digit | Containers and trailers on a transport leg
 | `EmissionsCalculator`, `TransportMode` | EN 16258 (now ISO 14083) and the GLEC Framework | CO~2~e of a shipment and the saving against road only
+| `GeoDistance` | Great-circle distance (haversine), on a sphere of the mean earth radius | Road distance estimates for route plans (<<geo>>)
 |===
 
 === GS1 check digit
@@ -442,6 +444,193 @@ for driver in A B C D; do      # four confirmations at once: one 200, the others
     -H 'Content-Type: application/json' -d '{"receivedBy": "Driver '$driver'"}' &
 done; wait; echo
 ----
+
+[[geo]]
+== Geo: territories and route plans
+
+The geo module answers a dispatcher's question for one van and one day: in which order should it drive its stops, and when will it be where?
+Its tables start with `geo_`, and like every table they are filtered by tenant.
+
+[plantuml,geo-model,svg]
+----
+@startuml
+hide circle
+hide methods
+skinparam classAttributeIconSize 0
+class Territory {
+  {field} territoryCode (unique per tenant)
+  name
+  {field} hubGln : GLN-13
+  centerLatitude, centerLongitude
+  coverageRadiusKm
+  activePointCount, weeklyVisitTarget
+  {field} workloadBalanceScore : 70 … 100
+}
+class RoutePlan {
+  {field} routeNumber : RTE-5001 (from geo_route_seq)
+  territoryCode
+  vehiclePlate
+  depotLatitude, depotLongitude
+  vehicleCapacityKg, averageSpeedKmh
+  loadedWeightKg, capacityUtilizationPct
+  totalDistanceKm, totalMinutes
+}
+class RouteStop {
+  sequenceNo
+  stopCode, customerName
+  latitude, longitude
+  demandWeightKg, serviceMinutes
+  {field} readyMinutes, dueMinutes : time window, optional
+  {field} legDistanceKm : from the stop before
+  {field} arrivalMinutes : after departure
+}
+Territory "1" .. "0..*" RoutePlan : by code
+RoutePlan "1" *-- "1..*" RouteStop : in driving order
+@enduml
+----
+
+Territory:: The area one hub serves: a circle around a centre, with the delivery points in it and the visits a week they need. The hub's GLN must have a valid check digit (`BR-GEO-01`). The workload balance score is 70, plus up to 20 for density (points per km of radius) and up to 10 for visit frequency (5 per weekly visit per point), at most 100 (`BR-GEO-02`).
+Route plan:: One vehicle's tour from a depot, numbered `RTE-…`. It belongs to a territory of the tenant, by code. The tour ends at the last stop: the way back to the depot is not part of it.
+Route stop:: A delivery point, with the load it takes off the vehicle, how long the vehicle stays and, if the customer has one, a time window: the earliest and the latest arrival in minutes after departure. The plan gives it its place in the order, the distance from the stop before and the arrival time, in minutes after departure.
+
+=== Planning a route
+
+[plantuml,geo-planning,svg]
+----
+@startuml
+start
+:at most 99 stops? (BR-GEO-07);
+note right: before any work: ordering grows\nwith the square of the list
+:the territory exists for this tenant?;
+:every stop code once? (BR-GEO-06)\nload within the capacity? (BR-GEO-03)\ntime windows whole?;
+:road distances and drive times\nbetween every pair of points (BR-GEO-05);
+if (a time window, or more than 8 stops?) then (yes)
+  :Timefold: every stop on time,\nthen the shortest distance;
+  if (every stop on time?) then (no)
+    :400;
+    stop
+  else (yes)
+  endif
+else (no)
+  :nearest neighbour;
+endif
+:arrival at each stop: the stop before\n+ its service + the drive, waiting\nfor a window that is not open yet;
+:number the plan, save it;
+stop
+@enduml
+----
+
+Each check that fails answers `400` and names what is wrong. A refused plan takes no route number.
+
+Stop codes (`BR-GEO-06`):: Each stop's proof of delivery will be filed under its code (S07-06). Codes are compared as a file name is made from them, in lower case and with anything other than letters, digits and hyphens as a hyphen, so `STOP_1`, `stop 1` and `STOP-1` are one code and refused together.
+Road distance (`BR-GEO-05`):: The straight line between two points times 1.24, the usual detour factor for road freight in Europe, and the drive time at the requested average speed (10 to 130 km/h), rounded up to whole minutes. With an OSRM server configured, distance and drive time come from the road network instead (<<osrm>>).
+Order (`BR-GEO-04`):: Up to 8 stops and no time window: nearest neighbour, from the depot always to the closest stop not yet visited. Otherwise Timefold (<<time-windows>>). A vehicle that arrives before a window opens waits; one that would arrive after it closes is not allowed.
+Limit (`BR-GEO-07`):: `GEO_MAX_STOPS`, 99 by default.
+
+[[time-windows]]
+=== Time windows: Timefold
+
+Nearest neighbour looks one stop ahead. With time windows that is not enough: a far stop that closes early has to come first, although a near one is waiting.
+https://timefold.ai[Timefold] searches orders instead: it builds one, then keeps changing it (moving a stop, swapping two, reversing a stretch) and keeps a change when the score improves.
+
+[cols="1,2,3",options="header"]
+|===
+| Level | Penalty | Means
+
+| Hard | One point per minute any stop is late | Any on-time order beats every late one
+| Soft | One point per metre of road | Among on-time orders, the shortest wins
+|===
+
+The score is calculated with the same clock as the plan: drive, wait if early, serve, drive on (`Tour.latenessMinutes`).
+If the best order the solver finds is still late, the route is refused with `400`: no order of these stops keeps every window, or none that the solver found.
+
+The solver stops when its best order has not improved for 0.2 s (`solver-unimproved-limit`), and at the latest after 1 s (`solver-limit`). A small route is answered in a fraction of a second; a hard one cannot hold the request longer. Lists over 8 stops go to Timefold too, without windows: there nearest neighbour's mistakes add up.
+
+[[osrm]]
+=== Road distances from OSRM
+
+https://project-osrm.org[OSRM] routes on OpenStreetMap data. Its table service answers, in one request, the road distance and drive time between every pair of a route's points, where the estimate only knows the straight line.
+It needs a map prepared in advance, so the cluster does not run one; the estimate is the default everywhere.
+
+[cols="2,3",options="header"]
+|===
+| Setting | Meaning
+
+| `GEO_ROAD_MATRIX` | `haversine` (default) or `osrm`
+| `GEO_OSRM_URL` | The OSRM server, `http://localhost:5000` by default
+|===
+
+What the client does, and why (`OsrmRoadMatrix`):
+
+* *Timeouts:* 2 s to connect, 5 s to answer. A stalled OSRM would otherwise hold the route request as long as the caller waits. A timeout, no server, a refused table, or two points with no road between them all answer `503 road-matrix-unavailable`, and no plan is stored.
+* *Coordinates in the path as they are:* `…/table/v1/driving/28.65,41.1;28.67,41.03`. Spring would encode `,` and `;` as URI variables, and OSRM rejects the encoded form.
+* *No compression:* OSRM's deflate answer is not what Spring's inflater expects. The answers are small.
+* *Size:* OSRM refuses a table above its `--max-table-size`, 100 points by default: the 99 stops of `GEO_MAX_STOPS` plus the depot.
+
+To try it from the IDE, prepare a map and start a server (Docker or Podman; Istanbul cut out of Geofabrik's Turkey extract with `osmium extract --bbox 28.4,40.8,29.5,41.3`):
+
+[source,bash]
+----
+IMG=ghcr.io/project-osrm/osrm-backend
+docker run --rm -v "$PWD:/data" $IMG osrm-extract -p /opt/car.lua /data/istanbul.osm.pbf
+docker run --rm -v "$PWD:/data" $IMG osrm-partition /data/istanbul.osrm
+docker run --rm -v "$PWD:/data" $IMG osrm-customize /data/istanbul.osrm
+docker run --rm -p 5000:5000 -v "$PWD:/data" $IMG osrm-routed --algorithm mld /data/istanbul.osrm
+----
+
+Then run the app with `GEO_ROAD_MATRIX=osrm`. The walkthrough's route keeps its order but its distances become the roads'.
+
+=== API
+
+All endpoints need `DISPATCHER` or `TENANT_ADMIN` (<<roles>>).
+
+[cols="2,4,3",options="header"]
+|===
+| Request | Does | Refused with
+
+| `POST /api/v1/geo/territories` | Creates a territory with its workload balance score. `201` | `400 domain-validation` (hub GLN), `409 territory-code-conflict`
+| `GET /api/v1/geo/territories` | The tenant's territories, by code |
+| `POST /api/v1/geo/routes` | Orders the stops, times them and numbers the plan. `201` with the stops in driving order | `400 domain-validation` (too many stops, unknown territory, a stop code twice, too much load), `400 invalid-payload` (a coordinate off the map), `503 road-matrix-unavailable` (<<osrm>>)
+| `GET /api/v1/geo/routes`, `/{id}` | The tenant's route plans, newest first | `404` for another tenant's id
+|===
+
+=== Try it on the cluster
+
+With the token from the WMS walkthrough (`nexus.planner` is a `TENANT_ADMIN`; `geodispatch.operator` of `ff-tr-distribution` is the realm's dispatcher):
+
+[source,bash]
+----
+curl -s localhost:8081/api/v1/geo/territories -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "territoryCode": "IST-EU", "name": "Istanbul Europe", "hubGln": "8690001000103",
+  "centerLatitude": 41.05, "centerLongitude": 28.85, "coverageRadiusKm": 35,
+  "activePointCount": 420, "weeklyVisitTarget": 840}'; echo
+
+curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "territoryCode": "IST-EU", "vehiclePlate": "34 FF 0417", "depotLatitude": 41.10, "depotLongitude": 28.65,
+  "vehicleCapacityKg": 3500, "averageSpeedKmh": 40, "stops": [
+    {"stopCode": "IST-KDK", "customerName": "Kadikoy Market", "latitude": 40.99, "longitude": 29.03, "demandWeightKg": 400, "serviceMinutes": 15},
+    {"stopCode": "IST-BSK", "customerName": "Besiktas Pharmacy", "latitude": 41.043, "longitude": 29.007, "demandWeightKg": 300, "serviceMinutes": 15},
+    {"stopCode": "IST-BKY", "customerName": "Bakirkoy Bakery", "latitude": 40.98, "longitude": 28.87, "demandWeightKg": 500, "serviceMinutes": 15},
+    {"stopCode": "IST-ESN", "customerName": "Esenyurt Depot Shop", "latitude": 41.03, "longitude": 28.67, "demandWeightKg": 200, "serviceMinutes": 15}]}' \
+  | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r["routeNumber"], r["totalDistanceKm"], "km", r["totalMinutes"], "min"); [print(s["sequenceNo"], s["stopCode"], s["legDistanceKm"], s["arrivalMinutes"]) for s in r["stops"]]'
+----
+
+The territory scores 92.0. The four stops come back in the reverse of the order they were sent, Esenyurt first, arriving at minutes 15, 63, 104 and 131; 56.17 km and 146 minutes in all.
+
+Now let Kadikoy take deliveries only until minute 70. Driving there first arrives at 64; Esenyurt first would arrive at 87:
+
+[source,bash]
+----
+curl -s localhost:8081/api/v1/geo/routes -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "territoryCode": "IST-EU", "vehiclePlate": "34 FF 0417", "depotLatitude": 41.10, "depotLongitude": 28.65,
+  "vehicleCapacityKg": 3500, "averageSpeedKmh": 40, "stops": [
+    {"stopCode": "IST-ESN", "customerName": "Esenyurt Depot Shop", "latitude": 41.03, "longitude": 28.67, "demandWeightKg": 200, "serviceMinutes": 15},
+    {"stopCode": "IST-KDK", "customerName": "Kadikoy Market", "latitude": 40.99, "longitude": 29.03, "demandWeightKg": 400, "serviceMinutes": 15,
+     "readyMinutes": 0, "dueMinutes": 70}]}' \
+  | python3 -c 'import json,sys; r=json.load(sys.stdin); [print(s["sequenceNo"], s["stopCode"], s["arrivalMinutes"]) for s in r["stops"]]'
+----
+
+Kadikoy comes first, at minute 64. With `"dueMinutes": 50` no order works, and the answer is `400`.
 
 [[events]]
 == Events between modules

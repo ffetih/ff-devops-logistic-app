@@ -170,6 +170,23 @@ where id = '<id>';
 ----
 History:: S06-09, S06-10.
 
+[[geo]]
+== Route planning
+
+=== Route planning answers `503 road-matrix-unavailable`
+
+Symptom:: `POST /api/v1/geo/routes` answers 503 with `road-matrix-unavailable`; other endpoints work.
+Check:: Which road matrix the app uses (no `GEO_` variable: the estimate, which cannot fail this way), and the app's warning, which names the cause (`ConnectException`, `HttpTimeoutException`, an OSRM code such as `TooBig`):
++
+[source,bash]
+----
+kubectl -n ff-logistics get rollout logistics-app -o yaml | grep -A1 GEO_
+kubectl -n ff-logistics logs -l app.kubernetes.io/name=logistics-app --tail=-1 | grep -i 'road network'
+----
+Cause:: `GEO_ROAD_MATRIX=osrm`, and the OSRM server is not running, too slow (more than 5 s), refuses the table (more points than its `--max-table-size`) or has no road between two of the points (a stop outside its map).
+Fix:: Start OSRM or point `GEO_OSRM_URL` at it; start `osrm-routed` with `--max-table-size` of at least `GEO_MAX_STOPS` + 1; or go back to the estimate with `GEO_ROAD_MATRIX=haversine`. Nothing was stored, so the dispatcher sends the same plan again.
+History:: S07-02.
+
 [[rollouts]]
 == Argo Rollouts
 

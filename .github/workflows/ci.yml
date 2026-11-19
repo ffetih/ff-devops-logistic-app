@@ -78,6 +78,8 @@ jobs:
           kubectl kustomize deploy/platform/argo-rollouts > /dev/null
           kubectl kustomize deploy/platform/postgres > /dev/null
           kubectl kustomize deploy/platform/keycloak > /dev/null
+          kubectl kustomize deploy/platform/rustfs > /dev/null
+          kubectl kustomize deploy/platform/kafka > /dev/null
 
   docs:
     name: Documentation

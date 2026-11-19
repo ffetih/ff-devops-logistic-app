@@ -4,6 +4,7 @@ import com.siose.ff.base.persistence.DatabaseSequences;
 import com.siose.ff.base.web.ResourceNotFoundException;
 import com.siose.ff.logistics.standards.TransportMode;
 import com.siose.ff.logistics.tms.ShipmentDelivered;
+import com.siose.ff.logistics.tms.ShipmentProgressed;
 import com.siose.ff.logistics.tms.domain.Incoterm;
 import com.siose.ff.logistics.tms.domain.Shipment;
 import com.siose.ff.logistics.tms.domain.ShipmentRepository;
@@ -138,18 +139,29 @@ public class ShipmentService {
         return shipments.saveAndFlush(candidate);
     }
 
+    /** Publishes {@link ShipmentProgressed} in the same transaction, like {@link #deliver}. */
     @Transactional
     public ShipmentView pickUp(UUID id) {
         Shipment shipment = shipment(id);
-        shipment.pickUp(Instant.now());
+        Instant at = Instant.now();
+        shipment.pickUp(at);
+        events.publishEvent(progressed(shipment, ShipmentProgressed.PICKED_UP, at));
         return view(shipment);
     }
 
+    /** Publishes {@link ShipmentProgressed} in the same transaction, like {@link #deliver}. */
     @Transactional
     public ShipmentView depart(UUID id) {
         Shipment shipment = shipment(id);
-        shipment.depart(Instant.now());
+        Instant at = Instant.now();
+        shipment.depart(at);
+        events.publishEvent(progressed(shipment, ShipmentProgressed.DEPARTED, at));
         return view(shipment);
+    }
+
+    private static ShipmentProgressed progressed(Shipment shipment, String stage, Instant at) {
+        return new ShipmentProgressed(shipment.getId(), shipment.getTenantId(), shipment.getShipmentNumber(),
+                shipment.getCustomerOrderReference(), stage, at);
     }
 
     /**

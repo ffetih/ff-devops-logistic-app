@@ -438,6 +438,31 @@ kubectl -n ff-logistics port-forward svc/rustfs-svc 9001:9001    # then http://l
 
 To start over with an empty store on purpose: scale the Deployment to 0, delete the claim `rustfs-data`, sync.
 
+## Kafka
+
+`deploy/platform/kafka` through the `kafka` Application: one broker in KRaft mode (its own controller, no ZooKeeper), `apache/kafka:4.2.2`, the version of the Kafka client Spring Boot manages. Topics are created by the services that own them; the broker creates none by itself.
+
+```text
+inside the cluster   kafka:9092  ─► the broker answers "I am kafka-0.kafka:9092"   (headless Service)
+from the host        localhost:9094 ─► NodePort 30094 ─► "I am localhost:9094"      (Service kafka-external)
+```
+
+A Kafka client asks any address for the cluster's metadata, then connects to the addresses the broker *advertises*. Each listener therefore advertises the name its clients can reach: a pod cannot resolve `localhost` to the broker, and the host cannot resolve `kafka-0.kafka`.
+
+```bash
+argocd app sync kafka && argocd app wait kafka --health
+kubectl -n ff-logistics exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+The topic list is empty until a service declares its topics. To read a topic from the beginning, with keys:
+
+```bash
+kubectl -n ff-logistics exec -it kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic <topic> --from-beginning --property print.key=true
+```
+
+The volume (`data-kafka-0`) comes from the StatefulSet's claim template: Kubernetes owns it, so neither a prune nor deleting the Application removes the topics. To start over: scale the StatefulSet to 0, delete the claim, sync.
+
 ## Keycloak
 
 `deploy/platform/keycloak` through the `keycloak` Application: Keycloak 26 in dev mode with the `ff-logistics` realm imported at start.

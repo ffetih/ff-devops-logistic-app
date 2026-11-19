@@ -257,7 +257,12 @@ pause 30s
 setWeight 100  the canary becomes stable
 ```
 
-The wait (`initialDelay`) is for the canary Service: the analysis starts as soon as the canary pod is ready, and a call before the Service's endpoints include that pod reaches nobody. Such a call is an error, not a failure: Rollouts tolerates a few (`consecutiveErrorLimit`, 4), so the run still passes, but `kubectl argo rollouts get rollout` shows it as `⚠ 1` next to the three successes.
+The wait (`initialDelay`) is for the canary pod: the analysis starts as soon as the pod is ready, and a JVM that has just become ready can still miss the 5 s timeout on its first answers. Every run before the wait showed it, one measurement as `Get ".../actuator/health/release": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`. Such a call is an error, not a failure: Rollouts tolerates a few (`consecutiveErrorLimit`, 4), so the run still passed, but `kubectl argo rollouts get rollout` showed it as `⚠ 1` next to the three successes. To read the measurements of a run:
+
+```bash
+kubectl -n ff-logistics get analysisrun <name> \
+  -o jsonpath='{range .status.metricResults[0].measurements[*]}{.phase}{"  "}{.message}{"\n"}{end}'
+```
 
 Without an ingress or a service mesh there is no traffic split by percent. The weights decide how many pods run the new version; the main Service keeps users on the stable pods, and the canary Service gives the analysis the new pods alone.
 

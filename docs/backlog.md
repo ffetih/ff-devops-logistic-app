@@ -342,7 +342,17 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
 
 ## S8 — Events out and the analytics database
 
-- [ ] **S08-01 Run single-node Kafka (KRaft)**
+Goal: business events leave the logistics app through Kafka, from the same outbox that already makes them safe inside it, and a service of its own loads them into an analytics database that only lets each tenant see its own rows.
+
+| PR | Items | What to try after merge and sync |
+| :--- | :--- | :--- |
+| A | S08-01 … S08-02 | Kafka runs; a pickup, a departure and a delivery each land on their topic, keyed by the shipment |
+| B | S08-03 | The analytics loader runs with its own database; a delivery reaches `rep_shipment_deliveries`, a broken message the dead-letter topic |
+| C | S08-04 … S08-05 | A reader sees only its tenant's rows; deliveries are rolled up per tenant and month |
+
+- [x] **S08-01 Run single-node Kafka (KRaft)**
+  `deploy/platform/kafka` through the `kafka` Application (wave -1): one `apache/kafka:4.2.2` broker that is its own controller, the version of the Kafka client Spring Boot manages. Two listeners, each advertising a name its clients can reach: `kafka-0.kafka:9092` inside the cluster, `localhost:9094` from the host (NodePort 30094). No topic is created by the broker itself; the services declare theirs. Topics live on the claim `data-kafka-0`. CI renders the kustomizations of `kafka` and, missing since S07-05, `rustfs`.
+  Done when: `argocd app sync kafka` turns Healthy and `kafka-topics.sh --list` answers.
 - [ ] **S08-02 Externalize ShipmentDelivered and ShipmentProgressed**
   Absorbs: `f4a575f`.
 - [ ] **S08-03 Add the analytics loader with a dead-letter topic**

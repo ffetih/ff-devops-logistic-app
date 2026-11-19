@@ -36,9 +36,13 @@ spec:
           image: {{ .Values.smokeTest.image | quote }}
           command: ["sh", "/smoke-test/smoke-test.sh"]
           env:
-            # The Service, not a pod: what every client of the service reaches
+            # The Service, not a pod: what every client of the service reaches. Its short name,
+            # because the Job runs in the same namespace: the first search domain in the pod's
+            # resolv.conf answers it at once. A full name without a trailing dot is tried with
+            # every search domain first (ndots 5), and the Alpine (musl) resolver in the curl
+            # image gives up as soon as one of those lookups fails.
             - name: BASE_URL
-              value: "http://{{ include "ff-service.name" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}"
+              value: "http://{{ include "ff-service.name" . }}:{{ .Values.service.port }}"
             {{- with .Values.smokeTest.token }}
             {{- if .url }}
             - name: TOKEN_URL

@@ -31,7 +31,7 @@ package "logistics-app" {
   [release] as release
   [standards] as standards
   [wms] as wms
-  [tms (S6)] as tms
+  [tms] as tms
   [geo (S7)] as geo
   [reporting (S9)] as reporting
 }
@@ -51,6 +51,7 @@ reporting ..> tms : events
 | `release` | nothing | The `releaseSwitch` health contributor read by the canary analysis
 | `standards` | nothing | GS1 check digits, ISO 6346 container codes, EN 16258 emissions (<<standards>>)
 | `wms` | `standards` | Warehouses, bin locations, inbound ASNs (<<wms>>)
+| `tms` | `standards` | Shipments with their legs, e-CMR number and CO~2~e footprint (<<tms>>)
 |===
 
 The base libraries (`siose-ff-base-*`) are not modules of the app; every module may use them.
@@ -291,6 +292,78 @@ A serial is not given back when the request fails afterwards, so the numbers can
 
 Why the ASN is locked:: Two scanners can receive against the same ASN at once. Without a lock, both would read "2 units still open", both would book 2, and the line would show 12 of 10. `findForReceivingById` takes a row lock until the transaction ends, so the second request waits, then sees 0 open and gets `409`. The bin is locked the same way, for its last free place, and always after the ASN, so two requests can never wait for each other.
 
+
+[[tms]]
+== Transport management (TMS)
+
+The TMS module plans shipments: one piece of equipment, carrying goods labelled with an SSCC, from origin to destination over a chain of transport legs.
+Its tables start with `tms_`, and like every table they are filtered by tenant.
+
+[plantuml,tms-model,svg]
+----
+@startuml
+hide circle
+hide methods
+skinparam classAttributeIconSize 0
+class Shipment {
+  {field} shipmentNumber : SHP-10001 (from tms_shipment_seq)
+  {field} ecmrNumber : ECMR-10001
+  consignorName, consigneeName
+  {field} equipmentCode : ISO 6346
+  {field} sscc : SSCC-18
+  {field} incoterm : Incoterms 2020
+  origin, destination
+  grossWeightKg
+  {field} footprint : distance, CO2e, road only, saved, %
+  status : PLANNED
+}
+class TransportLeg {
+  sequenceNo
+  {field} mode : SEA_RORO | RAIL | ROAD | ...
+  origin, destination
+  distanceKm
+  carrierReference
+}
+Shipment "1" *-- "1..*" TransportLeg : route, in order
+@enduml
+----
+
+Shipment:: The consignment as the planner books it. The shipment and its legs are one aggregate; the legs are only created through the shipment.
+e-CMR number:: The number of the electronic consignment note. The CMR convention's waybill travels with every international road transport in Europe; e-CMR is its electronic form. One per shipment here, numbered with the shipment.
+Equipment:: The container or trailer, by its ISO 6346 code. A wrong check digit is refused, so a typo cannot book the wrong box.
+Incoterm:: Who pays which part of the journey and where the risk passes, from the sales contract (Incoterms 2020: `EXW` … `DDP`).
+Route:: The legs in order. The first starts at the shipment's origin, each next one where the previous ended, the last ends at the destination; a gap is refused with the leg that breaks the chain.
+Footprint:: EN 16258 from `standards`, calculated when the shipment is planned and kept: a later change of emission factors does not rewrite what a customer was told.
+
+=== API
+
+All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
+
+[cols="2,4,3",options="header"]
+|===
+| Request | Does | Refused with
+
+| `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED` | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode)
+| `GET /api/v1/tms/shipments`, `/{id}` | The tenant's shipments, newest first | `404` for another tenant's id
+|===
+
+=== Try it on the cluster
+
+With the token from the WMS walkthrough (`nexus.planner` is also a `LOGISTICS_PLANNER`):
+
+[source,bash]
+----
+curl -s localhost:8081/api/v1/tms/shipments -H "$AUTH" -H 'Content-Type: application/json' -d '{
+  "consignorName": "Bosch Bursa", "consigneeName": "Rhein Parts GmbH",
+  "equipmentCode": "CSQU3054383", "sscc": "106141411234567897", "incoterm": "DAP",
+  "origin": "Istanbul Pendik", "destination": "Cologne Eifeltor", "grossWeightKg": 22000,
+  "legs": [
+    {"mode": "SEA_RORO", "origin": "Istanbul Pendik", "destination": "Trieste", "distanceKm": 1450, "carrierReference": "DFDS-PT-2611"},
+    {"mode": "RAIL", "origin": "Trieste", "destination": "Cologne Eifeltor Terminal", "distanceKm": 1050, "carrierReference": "TXL-41877"},
+    {"mode": "ROAD", "origin": "Cologne Eifeltor Terminal", "destination": "Cologne Eifeltor", "distanceKm": 80, "carrierReference": "TR-34-FF-0417"}]}'; echo
+----
+
+The answer carries `SHP-10001`, `ECMR-10001` and a footprint of 1606.22 kg CO~2~e against 3519.12 kg by road only, 54.36 % less.
 
 [[roles]]
 == Roles

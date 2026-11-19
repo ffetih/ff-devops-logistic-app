@@ -4,19 +4,21 @@
 # check fails the Job, and the sync is marked Failed. Nothing is rolled back; the failure is
 # the signal to look, or to roll back by hand. A canary that aborts never becomes Healthy,
 # so the test does not run on it.
-# BeforeHookCreation: the Job and its log stay until the next sync replaces them.
+# A new name on every sync (generateName): with one fixed name, Argo CD could read the Job
+# of the sync before (still being deleted) and report its result for this one. Kubernetes
+# deletes the Job a day after it finishes, so a failed run's log can still be read.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "ff-service.name" . }}-smoke-test
+  generateName: {{ include "ff-service.name" . }}-smoke-test-
   labels:
     app.kubernetes.io/name: {{ include "ff-service.name" . }}-smoke-test
     app.kubernetes.io/part-of: ff-logistics
     app.kubernetes.io/version: {{ .Values.image.tag | trunc 63 | quote }}
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
+  ttlSecondsAfterFinished: {{ .Values.hookJobTtlSeconds }}
   # A smoke test that only passes on a second try is a failed smoke test.
   backoffLimit: 0
   activeDeadlineSeconds: {{ .Values.smokeTest.activeDeadlineSeconds }}

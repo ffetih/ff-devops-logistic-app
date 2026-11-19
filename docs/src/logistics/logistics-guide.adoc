@@ -513,9 +513,43 @@ stop
 Each check that fails answers `400` and names what is wrong. A refused plan takes no route number.
 
 Stop codes (`BR-GEO-06`):: Each stop's proof of delivery will be filed under its code (S07-06). Codes are compared as a file name is made from them, in lower case and with anything other than letters, digits and hyphens as a hyphen, so `STOP_1`, `stop 1` and `STOP-1` are one code and refused together.
-Road distance (`BR-GEO-05`):: The straight line between two points times 1.24, the usual detour factor for road freight in Europe, and the drive time at the requested average speed (10 to 130 km/h), rounded up to whole minutes.
+Road distance (`BR-GEO-05`):: The straight line between two points times 1.24, the usual detour factor for road freight in Europe, and the drive time at the requested average speed (10 to 130 km/h), rounded up to whole minutes. With an OSRM server configured, distance and drive time come from the road network instead (<<osrm>>).
 Order (`BR-GEO-04`):: Nearest neighbour: from the depot, always to the closest stop not yet visited. Fast, and for a van's few stops usually close to the best order.
 Limit (`BR-GEO-07`):: `GEO_MAX_STOPS`, 99 by default.
+
+[[osrm]]
+=== Road distances from OSRM
+
+https://project-osrm.org[OSRM] routes on OpenStreetMap data. Its table service answers, in one request, the road distance and drive time between every pair of a route's points, where the estimate only knows the straight line.
+It needs a map prepared in advance, so the cluster does not run one; the estimate is the default everywhere.
+
+[cols="2,3",options="header"]
+|===
+| Setting | Meaning
+
+| `GEO_ROAD_MATRIX` | `haversine` (default) or `osrm`
+| `GEO_OSRM_URL` | The OSRM server, `http://localhost:5000` by default
+|===
+
+What the client does, and why (`OsrmRoadMatrix`):
+
+* *Timeouts:* 2 s to connect, 5 s to answer. A stalled OSRM would otherwise hold the route request as long as the caller waits. A timeout, no server, a refused table, or two points with no road between them all answer `503 road-matrix-unavailable`, and no plan is stored.
+* *Coordinates in the path as they are:* `…/table/v1/driving/28.65,41.1;28.67,41.03`. Spring would encode `,` and `;` as URI variables, and OSRM rejects the encoded form.
+* *No compression:* OSRM's deflate answer is not what Spring's inflater expects. The answers are small.
+* *Size:* OSRM refuses a table above its `--max-table-size`, 100 points by default: the 99 stops of `GEO_MAX_STOPS` plus the depot.
+
+To try it from the IDE, prepare a map and start a server (Docker or Podman; Istanbul cut out of Geofabrik's Turkey extract with `osmium extract --bbox 28.4,40.8,29.5,41.3`):
+
+[source,bash]
+----
+IMG=ghcr.io/project-osrm/osrm-backend
+docker run --rm -v "$PWD:/data" $IMG osrm-extract -p /opt/car.lua /data/istanbul.osm.pbf
+docker run --rm -v "$PWD:/data" $IMG osrm-partition /data/istanbul.osrm
+docker run --rm -v "$PWD:/data" $IMG osrm-customize /data/istanbul.osrm
+docker run --rm -p 5000:5000 -v "$PWD:/data" $IMG osrm-routed --algorithm mld /data/istanbul.osrm
+----
+
+Then run the app with `GEO_ROAD_MATRIX=osrm`. The walkthrough's route keeps its order but its distances become the roads'.
 
 === API
 
@@ -527,7 +561,7 @@ All endpoints need `DISPATCHER` or `TENANT_ADMIN` (<<roles>>).
 
 | `POST /api/v1/geo/territories` | Creates a territory with its workload balance score. `201` | `400 domain-validation` (hub GLN), `409 territory-code-conflict`
 | `GET /api/v1/geo/territories` | The tenant's territories, by code |
-| `POST /api/v1/geo/routes` | Orders the stops, times them and numbers the plan. `201` with the stops in driving order | `400 domain-validation` (too many stops, unknown territory, a stop code twice, too much load), `400 invalid-payload` (a coordinate off the map)
+| `POST /api/v1/geo/routes` | Orders the stops, times them and numbers the plan. `201` with the stops in driving order | `400 domain-validation` (too many stops, unknown territory, a stop code twice, too much load), `400 invalid-payload` (a coordinate off the map), `503 road-matrix-unavailable` (<<osrm>>)
 | `GET /api/v1/geo/routes`, `/{id}` | The tenant's route plans, newest first | `404` for another tenant's id
 |===
 

@@ -3,13 +3,15 @@ package com.siose.ff.logistics.geo.routing;
 import com.siose.ff.logistics.standards.GeoDistance;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
  * {@code BR-GEO-05}: the straight line times 1.24 as the road distance, and the drive time at the
- * requested average speed. Needs nothing outside the app.
+ * requested average speed. Needs nothing outside the app; the default.
  */
 @Component
+@ConditionalOnProperty(name = "logistics.geo.road-matrix", havingValue = "haversine", matchIfMissing = true)
 public class HaversineRoadMatrix implements RoadMatrix {
 
     @Override

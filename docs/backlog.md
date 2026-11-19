@@ -319,8 +319,10 @@ Goal: a dispatcher plans a van's day, stops in driving order with arrival times,
   Port: `logistics/geo`, `V3__geo_init.sql` (renamed: `geo_route_plans`, `route_number`, `arrival_minutes`; the e-POD column comes with documents in S07-06, the OpenTripModel export and the `TerritoryCreated`/`RoutePlanned` events when a reader needs them).
   Absorbs: `e9580b7` (duplicate stop codes), `c2c8c8a` (99 stops).
   Done when: after the sync, the hook has applied `V10`, and the walkthrough's route comes back as Esenyurt, Bakirkoy, Besiktas, Kadikoy, 56.17 km and 146 minutes.
-- [ ] **S07-02 Ask OSRM for road distances when one is configured**
-  Absorbs: `59d8170` (OSRM timeouts), the OSRM client fixes of `b851603` (coordinates not URL-encoded, no compressed answers).
+- [x] **S07-02 Ask OSRM for road distances when one is configured**
+  With `GEO_ROAD_MATRIX=osrm`, the route planner takes distances and drive times from an OSRM server's table service, one request per route, instead of the estimate. Connect and read timeouts (2 s, 5 s); the coordinates written into the path unencoded; no compressed answers. No server, a timeout, a refused table or a point without a road answer `503 road-matrix-unavailable` and store nothing. The cluster keeps the estimate: OSRM needs a prepared map; the guide shows how to run one for the IDE.
+  Absorbs: `59d8170` (OSRM timeouts), the OSRM client fixes of `b851603` (coordinates not URL-encoded, no compressed answers). The road lines for a map (`roadLegs`) come with the map in S10-04.
+  Done when: the tests against a stand-in OSRM pass in CI: the matrix read in km and minutes, the path unencoded, and 503 for each failure, a stalled server within the timeout.
 - [ ] **S07-03 Order routes with time windows using Timefold**
   Absorbs: `da10b36`, `0a4b9c0`.
 - [ ] **S07-04 Add the storage library**

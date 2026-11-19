@@ -226,7 +226,8 @@ docs/
     ├── shared/                          glossary, roles matrix
     ├── platform/platform-guide.adoc     this guide
     ├── identity/identity-guide.adoc
-    └── logistics/logistics-guide.adoc
+    ├── logistics/logistics-guide.adoc
+    └── operations/operations-guide.adoc
 ----
 
 [source,bash]

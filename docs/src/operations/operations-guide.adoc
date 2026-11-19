@@ -1,0 +1,223 @@
+= {project-name}: Operations Guide
+include::../_attributes.adoc[]
+// Revision of the latest change, written by docs/revisions.sh during the build (absent in a preview).
+include::../../build/revisions/operations-guide.adoc[opts=optional]
+:doctype: book
+
+[preface]
+== About this guide
+
+This guide is for whoever runs the platform on its cluster: reading what Argo CD, Argo Rollouts and the hooks report, and finding the cause when something is red.
+Every problem in it happened on this cluster. Each one is written the same way: what you see, how to check it, the cause, the fix, and the backlog item that dealt with it, so the full story is one search away in `docs/backlog.md`.
+
+How the parts are built and fit together is in the link:{url-platform-guide}[Platform Guide]; the commands to install and operate each part are in `deploy/README.md`.
+
+[[first-look]]
+== First look
+
+Most questions are answered by these, in this order:
+
+[source,bash]
+----
+# What Argo CD thinks: compared with Git (Synced?), running well (Healthy?), last operation
+argocd app list
+argocd app get logistics-app                          # the last operation's result, task by task
+
+# What the rollout did: revisions, canary steps, analysis runs
+kubectl argo rollouts get rollout logistics-app -n ff-logistics
+
+# The hook Jobs of the last syncs, newest last, and the log of the newest smoke test
+kubectl -n ff-logistics get jobs --sort-by=.metadata.creationTimestamp
+kubectl -n ff-logistics logs $(kubectl -n ff-logistics get jobs -l app.kubernetes.io/name=logistics-app-smoke-test \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)
+
+# Every measurement of an analysis run, with its message
+kubectl -n ff-logistics get analysisrun <name> \
+  -o jsonpath='{range .status.metricResults[0].measurements[*]}{.phase}{"  "}{.startedAt}{"  "}{.message}{"\n"}{end}'
+
+# What Kubernetes itself saw lately
+kubectl -n ff-logistics get events --sort-by=.lastTimestamp | tail -20
+----
+
+Three words that Argo CD uses for different things:
+
+[cols="1,3",options="header"]
+|===
+| Word | Means
+
+| Synced / OutOfSync | Whether the cluster matches Git, right now. A merge makes an app OutOfSync within about a minute, the next poll.
+| Healthy / Progressing / Degraded | Whether what runs is well: pods ready, the rollout finished.
+| Sync OK / Sync failed | How the last sync operation ended, hooks included. An app can be Synced and Healthy with its last sync Failed: everything was applied and runs, but a hook failed.
+|===
+
+[[argocd]]
+== Argo CD
+
+=== A merge does not show up
+
+Symptom:: The PR is merged, but the app stays Synced on the old commit.
+Check:: `argocd app get <app>` shows which commit it compared with.
+Cause:: Argo CD learns of a merge only by polling Git, every 60 s plus up to 10 s. A service also needs CI to publish its image and commit the tag first ("Publish image tags for …").
+Fix:: Wait a minute, or ask at once: `argocd app get <app> --refresh`, or the Refresh button.
+History:: S05-00.
+
+=== `PermissionDenied` when syncing an app
+
+Symptom:: `argocd app sync <app>` answers `PermissionDenied`, although you are signed in as admin.
+Check:: `argocd app list`: is the app there at all?
+Cause:: Argo CD answers an app that does not exist with `PermissionDenied`, so as not to reveal which apps exist. The app comes from `ff-root` (or the ApplicationSet), which creates it only after the branch that adds it is merged and polled.
+Fix:: Merge first, then wait for `ff-root` to create it, or refresh `ff-root`.
+History:: S01.
+
+=== The `argocd` app is OutOfSync right after it was installed
+
+Symptom:: The self-managed `argocd` Application shows OutOfSync, but its diff shows only annotations.
+Cause:: Resources applied by `kubectl apply -k` carry no Argo CD tracking annotation yet. The first sync of the Application adds it: Argo CD adopts what is already there.
+Fix:: Sync `argocd` once by hand.
+History:: S02-01.
+
+=== A patch in `deploy/argocd` has no effect
+
+Symptom:: The NodePort of `argocd-server` is not 30080, although the kustomize patch sets it.
+Cause:: Kustomize merges a Service's ports by `port` and `protocol` together. A patch without `protocol: TCP` matched no port and was dropped without an error.
+Fix:: Give the port in the patch its protocol. Render with `kubectl kustomize deploy/argocd` and look, rather than trust the patch.
+History:: S00.
+
+[[hooks]]
+== Hooks: migration and smoke test
+
+=== Sync failed, but the hook Job passed
+
+Symptom:: The last sync is Failed with `Job has reached the specified backoff limit`, but the hook Job from that sync is `Complete`.
+Check:: `kubectl -n ff-logistics get jobs` lists more than one Job with the hook's name, or one with a deletion time:
++
+[source,bash]
+----
+kubectl -n ff-logistics get job <name> -o custom-columns=FINALIZERS:.metadata.finalizers,DELETING:.metadata.deletionTimestamp
+----
+Cause:: The hook Jobs had a fixed name. Argo CD puts a finalizer, `argocd.argoproj.io/hook-finalizer`, on every hook and removes it only once it has read the result. A Job of an earlier sync keeps it, so its deletion never finishes, and the next sync, creating a Job of the same name, could read the old, failed one as its own.
+Fix:: Hook Jobs now get a new name every sync (`generateName`), and Kubernetes deletes them a day after they finish. Nothing to do, unless a Job with a fixed name is still around.
+History:: S06-02, S06-03.
+
+=== `kubectl delete job` hangs
+
+Symptom:: `kubectl delete job …` prints `deleted` and never returns.
+Cause:: The hook finalizer above: the Job is marked for deletion, and waits for Argo CD, which will not come back for it.
+Fix:: Press Ctrl+C, then take the finalizer off; the deletion finishes at once:
++
+[source,bash]
+----
+kubectl -n ff-logistics patch job <name> --type=merge -p '{"metadata":{"finalizers":null}}'
+----
+History:: S06-03.
+
+=== The smoke test cannot resolve the service
+
+Symptom:: `curl: (6) Could not resolve host: logistics-app.ff-logistics.svc.cluster.local` on the first check only; later checks to the same name pass.
+Cause:: A full name without a trailing dot is tried with every search domain of the pod first (`ndots: 5`), and the musl resolver of the Alpine curl image gives up as soon as one of those lookups fails.
+Fix:: The smoke test calls the Service by its short name, `http://logistics-app:8081`: the Job runs in the same namespace, and the first search domain answers it.
+History:: S05-07.
+
+=== The smoke test times out right after a release
+
+Symptom:: After a sync that rolled out new pods, the smoke test fails on an early check with `curl: (28) Connection timed out after 10000 milliseconds`, and every later check passes. A sync without a rollout passes.
+Cause:: A pod that stops is taken out of the Services at once, but kube-proxy updates the routing rules a moment later. Until then, new connections still go to its IP, where nothing listens: they get no answer and hang. Any client calling during a rollout loses requests this way; the smoke test runs right as the old pods stop, so it was the first to notice.
+Fix:: Every pod now sleeps 10 s in `preStop` before it is told to stop, and keeps answering meanwhile (`shutdown` in the chart's values). The first release after the change still stops the old pods the old way. To see that no request is lost, call the Service in a loop while the pods are replaced:
++
+[source,bash]
+----
+kubectl -n ff-logistics run probe --rm -i --image=curlimages/curl:8.22.0 --restart=Never -- sh -c '
+  ok=0; bad=0; end=$(( $(date +%s) + 120 ))
+  while [ $(date +%s) -lt $end ]; do
+    if curl -s -o /dev/null --max-time 3 http://logistics-app:8081/actuator/health/readiness; then ok=$((ok+1)); else bad=$((bad+1)); fi
+    sleep 0.2
+  done; echo "ok=$ok failed=$bad"'
+kubectl argo rollouts restart logistics-app -n ff-logistics     # in a second terminal
+----
+History:: S06-07.
+
+=== A migration hook fails
+
+Symptom:: The sync stops in PreSync; no new pod starts.
+Check:: The log of the newest `…-migrate-…` Job: Flyway names the script and the SQL error.
+Cause:: A script that does not apply to the database as it is: a typo, or a change that does not fit the rows already there (a `NOT NULL` column without a default, say).
+Fix:: Nothing is broken: the running version keeps serving on the old schema. Fix the script in a new commit; never edit a script that has already been applied somewhere, add the next version instead.
+History:: S03, S06-05 (`version BIGINT NOT NULL DEFAULT 0` on a table with rows).
+
+[[rollouts]]
+== Argo Rollouts
+
+=== An analysis run shows `✓ 3, ⚠ 1`
+
+Symptom:: The run is `Successful`, but `kubectl argo rollouts get rollout` shows one measurement with `⚠`.
+Check:: The run's measurements and their messages (<<first-look>>).
+Cause:: `⚠` is an error, not a failure: the measurement got no answer, so it says nothing about the release. Rollouts tolerates a few errors in a row (`consecutiveErrorLimit`, 4); a failure (`DOWN`) aborts at once. Here the message was `Client.Timeout exceeded while awaiting headers`: a call to a pod that the canary step was stopping, the same cause as the smoke test timeout above.
+Fix:: The graceful stop of S06-07. The 10 s wait before the first measurement (S05-06) stays; it does no harm.
+History:: S05-06, S05-08, S06-07.
+
+=== The plugin cannot find `rollouts.argoproj.io`
+
+Symptom:: `kubectl argo rollouts get rollout …` answers that it could not find the resource type.
+Cause:: The Rollouts CRDs are not in the cluster yet: the `argo-rollouts` app has not been synced.
+Fix:: `argocd app sync argo-rollouts`, then retry.
+History:: S02.
+
+=== The dashboard does not start, or shows nothing
+
+Symptom:: `kubectl argo rollouts dashboard` fails because port 3100 is in use, or opens on an empty namespace.
+Cause:: Ctrl+Z suspends a command instead of stopping it: the suspended dashboard still holds the port. The dashboard shows the current context's namespace, `default` unless set.
+Fix:: `kill %1` (or `jobs`, then `kill %n`), and stop it with Ctrl+C next time. `kubectl config set-context --current --namespace ff-logistics`.
+History:: S02.
+
+[[identity]]
+== Keycloak and the identity service
+
+=== The Keycloak admin console hangs on "Timeout when waiting for 3rd party check iframe message"
+
+Cause:: Keycloak told the browser to load its pages from the address it knew itself by, `http://keycloak:8080`, which only exists inside the cluster.
+Fix:: `--hostname=http://localhost:8180` with `--hostname-backchannel-dynamic=true`: browsers use the public address, services inside the cluster the internal one. The token issuer is the public address since then.
+History:: S04-04.
+
+[[build]]
+== Build, CI and images
+
+=== `FlywayMigrationTest` fails in CI, but nothing else does
+
+Symptom:: `Failed to load ApplicationContext`, with Hibernate missing a table, on PostgreSQL only.
+Cause:: The test configuration deferred database initialization until Hibernate was up, for the H2 sequences. Spring Boot counts Flyway as database initialization too, so Hibernate validated an empty schema before Flyway ran. Locally the test is skipped where no Docker is reachable.
+Fix:: `FlywayMigrationTest` turns the deferral off for itself.
+History:: S05-04.
+
+=== Pushing an image is refused with `permission_denied: write_package`
+
+Cause:: A GHCR package belongs to the repository that created it. `ghcr.io/ffetih/ff-logistics-app` had been created by the old repository.
+Fix:: Images are named under this repository: `ghcr.io/ffetih/ff-devops-logistic-app/<service>`.
+History:: S01-09.
+
+=== Every service gets a new image, although only one changed
+
+Cause:: Expected when `base/`, `.mvn` or `mvnw` changed: every service is built on them. CI publishes a service when its own folder or one of these changed.
+Fix:: None needed; the services whose image is unchanged in content still roll out once, after their sync.
+History:: S01.
+
+=== The docs build fails on a diagram
+
+Symptom:: `Failed to generate image: PlantUML preprocessing failed … This element (x) is already defined`.
+Cause:: PlantUML keeps one namespace for a diagram: a package and a component inside it cannot share a name.
+Fix:: Give the component its own alias (`as acd`).
+History:: S04-08.
+
+[[workstation]]
+== Workstation
+
+=== `git push` from WSL asks for a GitHub user name
+
+Cause:: Git in WSL has no GitHub credentials; Git Bash on Windows does.
+Fix:: Let WSL use the Windows credential manager, once; it applies from the next git command, no new terminal needed:
++
+[source,bash]
+----
+git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"
+----
+
+include::../../build/revisions/operations-guide-history.adoc[opts=optional]

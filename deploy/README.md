@@ -2,6 +2,8 @@
 
 Git is the desired state. Argo CD, running inside the cluster, makes the cluster match what is committed under `deploy/`. Only two things are applied by hand: the cluster itself and the first Argo CD install.
 
+When something is red, start with the Operations Guide (`docs/src/operations/operations-guide.adoc`): where to look first, and every problem met on this cluster with its cause and fix.
+
 ```text
 deploy/
 ├── cluster/k3d-config.yaml   the local cluster: k3s version, host ports

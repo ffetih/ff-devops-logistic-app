@@ -263,6 +263,7 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 | fix | S06-07 | A release no longer drops calls to the pods it stops: the smoke test passes after a canary, and the analysis has no error measurement |
 | docs | S06-08 | The Operations Guide: where to look first, and every problem met so far with its cause and fix |
 | C | S06-09 … S06-10 | A delivery publishes `ShipmentDelivered`, and a listener records it, also after a pod dies in between |
+| fix | S06-11 | Canary analysis runs show `✓ 3` with no `⚠` |
 
 - [x] **S06-01 Add shipments with e-CMR, ISO 6346 equipment and CO2e**
   The `tms` module and its first tables (`V4__tms_init.sql`): a shipment numbered from `tms_shipment_seq` (`SHP-10001`, e-CMR `ECMR-10001`), with consignor, consignee, an ISO 6346 equipment code, the SSCC it carries and an Incoterm, and its legs in order. The legs must form one chain from origin to destination. The EN 16258 footprint from `standards` is calculated when the shipment is planned and kept. The smoke test now also lists shipments.
@@ -300,6 +301,9 @@ Goal: shipments from planning to delivery, and the first event between modules, 
   The new technical module `outbox` publishes unfinished events again every 30 s. A PostgreSQL advisory lock lets one pod run it at a time; the others skip. `EventRetryPolicy`: the wait doubles from 1 min to 1 h, at most 5 attempts, then the row stays open, counted in the gauge `logistics.events.publications.exhausted`. Rows a stopped pod left behind turn `FAILED` after 5 min (staleness). Completed rows are deleted after 7 days. Not in the `migrate` profile. Tests: a failing listener gets its event again, and stops after the maximum; against PostgreSQL, a run skips while another session holds the lock. The Operations Guide says what to do with a row that stopped retrying.
   Absorbs: `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup).
   Done when: the tests pass in CI, and in the cluster `event_publication` holds no open rows a few minutes after the walkthrough's delivery.
+- [x] **S06-11 Call the canary Service by its absolute name**
+  Every analysis run still had one `⚠` after S06-07, always the first measurement: S06-07's stopping pods were not its cause, and neither was S05-06/08's cold JVM. The Rollouts controller resolves `logistics-app-canary.ff-logistics.svc.cluster.local`, which has fewer dots than `ndots: 5`, so it first walks the search domains of its own pod; from a pod in `argo-rollouts` that took 5.0 s and 3.0 s, the absolute name 0.4 ms, against a 5 s measurement timeout. The AnalysisTemplate now ends the name with a dot. Tomcat accepts such a host. S06-07 still holds for the smoke test; the README, the chart's comments and the Operations Guide now say which cause belongs to which symptom.
+  Done when: the next canary's analysis run is `✓ 3` without `⚠`.
 
 ## S7 — Geo and documents
 

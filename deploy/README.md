@@ -259,7 +259,20 @@ pause 30s
 setWeight 100  the canary becomes stable
 ```
 
-The wait (`initialDelay`) is for the canary pod: the analysis starts as soon as the pod is ready, and a JVM that has just become ready can still miss the 5 s timeout on its first answers. Every run before the wait showed it, one measurement as `Get ".../actuator/health/release": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`. Such a call is an error, not a failure: Rollouts tolerates a few (`consecutiveErrorLimit`, 4), so the run still passed, but `kubectl argo rollouts get rollout` showed it as `⚠ 1` next to the three successes. To read the measurements of a run:
+Every run up to S06-11 had one measurement as `Get ".../actuator/health/release": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`. Such a call is an error, not a failure: Rollouts tolerates a few (`consecutiveErrorLimit`, 4), so the run still passed, but `kubectl argo rollouts get rollout` showed it as `⚠ 1` next to the three successes. Two explanations were wrong (a cold JVM, S05-06/08; a stopping pod, S06-07). The cause was the name lookup in the Rollouts controller:
+
+```text
+logistics-app-canary.ff-logistics.svc.cluster.local      4 dots < ndots 5: not absolute
+  → tried with each search domain of the controller's pod first:
+      ….argo-rollouts.svc.cluster.local   NXDOMAIN, fast
+      ….svc.cluster.local                 NXDOMAIN, fast
+      ….cluster.local                     NXDOMAIN, fast
+      ….<search domain from the host>     most likely: leaves the cluster, slow to fail
+  → then as it is                         the answer
+logistics-app-canary.ff-logistics.svc.cluster.local.     trailing dot: absolute, asked once
+```
+
+From a pod in `argo-rollouts`, the first lookup took 5.0 s, the next 3.0 s, the absolute name 0.4 ms; a measurement has 5 s. The template now uses the absolute name. The 10 s wait (`initialDelay`) stays as a margin for the pod's first seconds. To read the measurements of a run:
 
 ```bash
 kubectl -n ff-logistics get analysisrun <name> \
@@ -375,7 +388,7 @@ The canary analysis and the smoke test answer different questions. The analysis 
 
 ### Stopping a pod without dropping requests
 
-The smoke test after the S06-05 release failed on its first call with `curl: (28) Connection timed out after 10000 milliseconds`, and every later call passed; the canary analysis of every release had one measurement that hung the same way. Both ran while old pods were being stopped:
+The smoke test after the S06-05 release failed on its first call with `curl: (28) Connection timed out after 10000 milliseconds`, and every later call passed. It ran while old pods were being stopped (the canary analysis's error measurement looked the same, but had another cause: see the canary section):
 
 ```text
 Rollout scales the old ReplicaSet down → Kubernetes removes the pod from the Services and stops it

@@ -40,10 +40,9 @@ rollout:
     analysis:
       enabled: false
       path: /actuator/health/release
-      # The analysis starts the moment the canary pod is ready. A JVM that has just become
-      # ready can still take more than the 5 s timeout for its first answers (classes still
-      # loading, the JIT busy, the node busy with the pod's start), and such a call counts as
-      # an error. The first measurement waits this long.
+      # The first measurement waits this long after the canary pod is ready. It was added
+      # for a slow first answer that turned out to be a slow DNS lookup (see the template);
+      # it stays as a margin for the pod's first seconds.
       initialDelay: 10s
       interval: 10s
       count: 3              # three answers, all of them UP, or the release aborts

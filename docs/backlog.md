@@ -272,8 +272,10 @@ Goal: shipments from planning to delivery, and the first event between modules, 
 - [x] **S06-03 Name the hook finalizer as the cause**
   S06-02 explained the stale hook as a deletion that "takes a moment". The cause is a finalizer: Argo CD 3 puts `argocd.argoproj.io/hook-finalizer` on every hook resource and removes it only once it has read the hook's result. A Job left by an earlier sync keeps it, so deleting the Job never finishes: it stays, with a deletion time, under the same name, and Argo CD read its old `Failed`. The same finalizer made `kubectl delete job` hang when the two fixed-name Jobs were removed by hand. The README now says so and shows how to remove such a Job.
   Done when: the README explains the finalizer next to `generateName`.
-- [ ] **S06-04 Record pickup and departure**
+- [x] **S06-04 Record pickup and departure**
+  `POST …/pickup` and `…/departure` move a shipment forward and record the time (`V5__tms_shipment_progress.sql`, two nullable columns: the shipments planned before keep working). Forward only: a step may be left out, never repeated or taken back (`409 shipment-status-conflict`).
   Absorbs: `59e4bc4`, `V10`.
+  Done when: the walkthrough's shipment goes to `PICKED_UP` and `DEPARTED`, and a second pickup answers `409`.
 - [ ] **S06-05 Confirm delivery once under concurrency**
   Absorbs: `b6b8378`, `V5`, `V8`.
 - [ ] **S06-06 Create one shipment per customer order number**

@@ -33,6 +33,18 @@ public class ShipmentController {
         return service.plan(request);
     }
 
+    /** The carrier has collected the goods. Refused once the shipment is further along. */
+    @PostMapping("/{id}/pickup")
+    public ShipmentView pickUp(@PathVariable UUID id) {
+        return service.pickUp(id);
+    }
+
+    /** The first leg has left. May follow the pickup or skip it. */
+    @PostMapping("/{id}/departure")
+    public ShipmentView depart(@PathVariable UUID id) {
+        return service.depart(id);
+    }
+
     @GetMapping
     public List<ShipmentView> list() {
         return service.list();

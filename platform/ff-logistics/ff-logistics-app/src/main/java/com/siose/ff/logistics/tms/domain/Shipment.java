@@ -18,6 +18,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -85,6 +86,10 @@ public class Shipment extends TenantAwareEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ShipmentStatus status;
+
+    private Instant pickedUpAt;
+
+    private Instant departedAt;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "shipment_id", nullable = false)
@@ -166,6 +171,26 @@ public class Shipment extends TenantAwareEntity {
         return shipment;
     }
 
+    /** The carrier has collected the goods. */
+    public void pickUp(Instant at) {
+        advanceTo(ShipmentStatus.PICKED_UP);
+        pickedUpAt = at;
+    }
+
+    /** The first leg has left the origin. */
+    public void depart(Instant at) {
+        advanceTo(ShipmentStatus.DEPARTED);
+        departedAt = at;
+    }
+
+    /** Forward only: the target must come after the current status. */
+    private void advanceTo(ShipmentStatus target) {
+        if (target.compareTo(status) <= 0) {
+            throw TmsConflictException.statusConflict(shipmentNumber, status, target);
+        }
+        status = target;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -232,6 +257,14 @@ public class Shipment extends TenantAwareEntity {
 
     public ShipmentStatus getStatus() {
         return status;
+    }
+
+    public Instant getPickedUpAt() {
+        return pickedUpAt;
+    }
+
+    public Instant getDepartedAt() {
+        return departedAt;
     }
 
     public List<TransportLeg> getLegs() {

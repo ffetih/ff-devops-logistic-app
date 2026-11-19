@@ -315,7 +315,8 @@ class Shipment {
   origin, destination
   grossWeightKg
   {field} footprint : distance, CO2e, road only, saved, %
-  status : PLANNED
+  {field} status : see the lifecycle
+  pickedUpAt, departedAt
 }
 class TransportLeg {
   sequenceNo
@@ -335,6 +336,22 @@ Incoterm:: Who pays which part of the journey and where the risk passes, from th
 Route:: The legs in order. The first starts at the shipment's origin, each next one where the previous ended, the last ends at the destination; a gap is refused with the leg that breaks the chain.
 Footprint:: EN 16258 from `standards`, calculated when the shipment is planned and kept: a later change of emission factors does not rewrite what a customer was told.
 
+[[shipment-lifecycle]]
+=== Lifecycle
+
+[plantuml,tms-lifecycle,svg]
+----
+@startuml
+hide empty description
+[*] --> PLANNED : POST /shipments
+PLANNED --> PICKED_UP : POST …/pickup
+PICKED_UP --> DEPARTED : POST …/departure
+PLANNED --> DEPARTED : POST …/departure\n(pickup not reported)
+@enduml
+----
+
+A shipment only moves forward. A step may be left out, because not every carrier reports every scan, but never repeated or taken back: a pickup after the departure answers `409 shipment-status-conflict`. Each step records its time (`pickedUpAt`, `departedAt`); a step that was left out keeps no time.
+
 === API
 
 All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
@@ -343,6 +360,7 @@ All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
 |===
 | Request | Does | Refused with
 
+| `POST /api/v1/tms/shipments/{id}/pickup`, `/departure` | Moves the shipment one step on (<<shipment-lifecycle>>) | `409 shipment-status-conflict`
 | `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED` | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode)
 | `GET /api/v1/tms/shipments`, `/{id}` | The tenant's shipments, newest first | `404` for another tenant's id
 |===

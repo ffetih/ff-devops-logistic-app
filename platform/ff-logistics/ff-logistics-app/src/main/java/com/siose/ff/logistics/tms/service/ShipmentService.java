@@ -57,8 +57,8 @@ public class ShipmentService {
 
     public record ShipmentView(UUID id, String tenantId, String shipmentNumber, String ecmrNumber,
             String consignorName, String consigneeName, String equipmentCode, String sscc, Incoterm incoterm,
-            String origin, String destination, double grossWeightKg, ShipmentStatus status, FootprintView footprint,
-            List<LegView> legs, Instant createdAt) {
+            String origin, String destination, double grossWeightKg, ShipmentStatus status, Instant pickedUpAt,
+            Instant departedAt, FootprintView footprint, List<LegView> legs, Instant createdAt) {
     }
 
     public record FootprintView(double totalDistanceKm, double co2eKg, double roadOnlyCo2eKg, double savedCo2eKg,
@@ -84,6 +84,20 @@ public class ShipmentService {
         return view(shipments.save(Shipment.plan(plan, () -> sequences.next(SHIPMENT_SEQUENCE))));
     }
 
+    @Transactional
+    public ShipmentView pickUp(UUID id) {
+        Shipment shipment = shipment(id);
+        shipment.pickUp(Instant.now());
+        return view(shipment);
+    }
+
+    @Transactional
+    public ShipmentView depart(UUID id) {
+        Shipment shipment = shipment(id);
+        shipment.depart(Instant.now());
+        return view(shipment);
+    }
+
     @Transactional(readOnly = true)
     public List<ShipmentView> list() {
         return shipments.findAllByOrderByCreatedAtDesc().stream().map(ShipmentService::view).toList();
@@ -91,15 +105,19 @@ public class ShipmentService {
 
     @Transactional(readOnly = true)
     public ShipmentView get(UUID id) {
-        return view(shipments.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Shipment " + id + " not found")));
+        return view(shipment(id));
+    }
+
+    private Shipment shipment(UUID id) {
+        return shipments.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Shipment " + id + " not found"));
     }
 
     private static ShipmentView view(Shipment s) {
         return new ShipmentView(s.getId(), s.getTenantId(), s.getShipmentNumber(), s.getEcmrNumber(),
                 s.getConsignorName(), s.getConsigneeName(), s.getEquipmentCode(), s.getSscc(), s.getIncoterm(),
-                s.getOrigin(), s.getDestination(), s.getGrossWeightKg(), s.getStatus(),
-                new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
+                s.getOrigin(), s.getDestination(), s.getGrossWeightKg(), s.getStatus(), s.getPickedUpAt(),
+                s.getDepartedAt(), new FootprintView(s.getTotalDistanceKm(), s.getCo2eKg(), s.getRoadOnlyCo2eKg(), s.getSavedCo2eKg(),
                         s.getReductionPercent()),
                 s.getLegs().stream().map(ShipmentService::view).toList(), s.getCreatedAt());
     }

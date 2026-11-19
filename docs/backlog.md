@@ -280,8 +280,10 @@ Goal: shipments from planning to delivery, and the first event between modules, 
   `POST …/delivery` with who signed for the goods; `DELIVERED` ends the lifecycle. `V6__tms_shipment_delivery.sql` adds the delivery columns and a `version` (`NOT NULL DEFAULT 0`, so existing shipments start at 0): optimistic locking, so of two confirmations that read the shipment at the same time only one commits. A test plays the race out step by step with two transactions; against PostgreSQL, four parallel confirmations give one `200` and three `409 concurrent-update`.
   Absorbs: `b6b8378`, `V5`, `V8`.
   Done when: the walkthrough's four parallel confirmations answer one `200` and three `409`.
-- [ ] **S06-06 Create one shipment per customer order number**
+- [x] **S06-06 Create one shipment per customer order number**
+  An optional `customerOrderReference` makes `POST /shipments` safe to repeat: the same number with the same plan answers `200` with the existing shipment, with another plan `409 customer-order-conflict`. `V7` adds the column and a unique index per tenant. Two retries at the same moment: the index lets one insert commit, and the loser reads the winner in a fresh transaction. The plan is checked and compared before it takes a shipment number. Against PostgreSQL, eight parallel identical requests give one `201` and seven `200`.
   Absorbs: `ee69a9c`, `V9`.
+  Done when: the same request with an order number, sent twice, answers `201` and then `200` with the same shipment.
 - [ ] **S06-07 Publish ShipmentDelivered through the event publication registry**
   Absorbs: `2019e11`, `V7`, `0f986f0` (max attempts), `b1faf04` (advisory lock), `16c7a2a` (cleanup), `59d8170` (listener concurrency).
 

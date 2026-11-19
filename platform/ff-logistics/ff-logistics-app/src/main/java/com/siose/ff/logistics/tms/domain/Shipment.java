@@ -18,12 +18,14 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.function.LongSupplier;
+import java.util.stream.IntStream;
 
 /**
  * One consignment moved for a customer: one piece of equipment, labelled with the SSCC of what
@@ -37,7 +39,9 @@ import java.util.function.LongSupplier;
  * which checks that they form one unbroken chain.
  */
 @Entity
-@Table(name = "tms_shipments")
+// The unique index of V7, declared here too so the tests' generated schema has it.
+@Table(name = "tms_shipments", uniqueConstraints = @UniqueConstraint(name = "uq_tms_shipments_customer_order",
+        columnNames = {"tenant_id", "customer_order_reference"}))
 public class Shipment extends TenantAwareEntity {
 
     @Id
@@ -46,6 +50,10 @@ public class Shipment extends TenantAwareEntity {
 
     @Column(nullable = false, length = 20)
     private String shipmentNumber;
+
+    /** The customer's own order number, if it gave one; unique within the tenant. */
+    @Column(length = 64)
+    private String customerOrderReference;
 
     @Column(nullable = false, length = 20)
     private String ecmrNumber;
@@ -114,8 +122,9 @@ public class Shipment extends TenantAwareEntity {
     }
 
     /** What a planner books. Legs are given in order; each starts where the previous one ended. */
-    public record Plan(String consignorName, String consigneeName, String equipmentCode, String sscc,
-            Incoterm incoterm, String origin, String destination, double grossWeightKg, List<PlannedLeg> legs) {
+    public record Plan(String customerOrderReference, String consignorName, String consigneeName,
+            String equipmentCode, String sscc, Incoterm incoterm, String origin, String destination,
+            double grossWeightKg, List<PlannedLeg> legs) {
     }
 
     public record PlannedLeg(TransportMode mode, String origin, String destination, double distanceKm,
@@ -123,12 +132,14 @@ public class Shipment extends TenantAwareEntity {
     }
 
     /**
-     * @param numbers hands out the shipment's serial number ({@code tms_shipment_seq}); asked only
-     *                once the plan is valid, so a refused plan does not use up a number
+     * A checked, not yet numbered shipment: compare it with an existing one ({@link #samePlanAs}),
+     * or {@link #assignNumber} it and save it. Numbering last means that a refused plan, or a
+     * repeated one, does not use up a number.
+     *
      * @throws IllegalArgumentException if the equipment code or SSCC is not valid, or the legs do
      *                                  not form one chain from origin to destination
      */
-    public static Shipment plan(Plan plan, LongSupplier numbers) {
+    public static Shipment plan(Plan plan) {
         String equipmentCode = plan.equipmentCode().trim().toUpperCase();
         if (!Iso6346ContainerCode.isValid(equipmentCode)) {
             throw new IllegalArgumentException("Equipment " + plan.equipmentCode()
@@ -142,6 +153,8 @@ public class Shipment extends TenantAwareEntity {
         }
 
         Shipment shipment = new Shipment();
+        String reference = plan.customerOrderReference();
+        shipment.customerOrderReference = reference == null || reference.isBlank() ? null : reference.trim();
         shipment.consignorName = plan.consignorName().trim();
         shipment.consigneeName = plan.consigneeName().trim();
         shipment.equipmentCode = equipmentCode;
@@ -178,11 +191,42 @@ public class Shipment extends TenantAwareEntity {
         shipment.roadOnlyCo2eKg = footprint.roadOnlyCo2eKg();
         shipment.savedCo2eKg = footprint.savedCo2eKg();
         shipment.reductionPercent = footprint.reductionPercent();
-
-        long number = numbers.getAsLong();
-        shipment.shipmentNumber = "SHP-" + number;
-        shipment.ecmrNumber = "ECMR-" + number;
         return shipment;
+    }
+
+    /** @param number the shipment's serial number, from {@code tms_shipment_seq} */
+    public void assignNumber(long number) {
+        if (shipmentNumber != null) {
+            throw new IllegalStateException("Shipment " + shipmentNumber + " is already numbered");
+        }
+        shipmentNumber = "SHP-" + number;
+        ecmrNumber = "ECMR-" + number;
+    }
+
+    /**
+     * Whether this shipment was booked from the same plan as {@code other}: same parties,
+     * equipment, goods, terms and route. A client that repeats a request gets the same answer;
+     * the same order number with anything else is another order.
+     */
+    public boolean samePlanAs(Shipment other) {
+        return consignorName.equals(other.consignorName)
+                && consigneeName.equals(other.consigneeName)
+                && equipmentCode.equals(other.equipmentCode)
+                && sscc.equals(other.sscc)
+                && incoterm == other.incoterm
+                && origin.equals(other.origin)
+                && destination.equals(other.destination)
+                && Double.compare(grossWeightKg, other.grossWeightKg) == 0
+                && legs.size() == other.legs.size()
+                && IntStream.range(0, legs.size()).allMatch(i -> sameLeg(legs.get(i), other.legs.get(i)));
+    }
+
+    private static boolean sameLeg(TransportLeg a, TransportLeg b) {
+        return a.getMode() == b.getMode()
+                && a.getOrigin().equals(b.getOrigin())
+                && a.getDestination().equals(b.getDestination())
+                && Double.compare(a.getDistanceKm(), b.getDistanceKm()) == 0
+                && Objects.equals(a.getCarrierReference(), b.getCarrierReference());
     }
 
     /** The carrier has collected the goods. */
@@ -218,6 +262,10 @@ public class Shipment extends TenantAwareEntity {
 
     public String getShipmentNumber() {
         return shipmentNumber;
+    }
+
+    public String getCustomerOrderReference() {
+        return customerOrderReference;
     }
 
     public String getEcmrNumber() {

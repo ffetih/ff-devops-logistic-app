@@ -20,6 +20,12 @@ public class TmsConflictException extends ConflictException {
                         + ", a shipment only moves forward");
     }
 
+    public static TmsConflictException customerOrderTaken(String reference, String shipmentNumber) {
+        return new TmsConflictException("customer-order-conflict", "Customer Order Conflict",
+                "Customer order " + reference + " already has shipment " + shipmentNumber
+                        + ", booked with other details; a different order needs a different number");
+    }
+
     @Override
     public String problemSlug() {
         return slug;

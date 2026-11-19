@@ -307,6 +307,7 @@ hide methods
 skinparam classAttributeIconSize 0
 class Shipment {
   {field} shipmentNumber : SHP-10001 (from tms_shipment_seq)
+  {field} customerOrderReference (unique per tenant)
   {field} ecmrNumber : ECMR-10001
   consignorName, consigneeName
   {field} equipmentCode : ISO 6346
@@ -337,6 +338,25 @@ Equipment:: The container or trailer, by its ISO 6346 code. A wrong check digit 
 Incoterm:: Who pays which part of the journey and where the risk passes, from the sales contract (Incoterms 2020: `EXW` … `DDP`).
 Route:: The legs in order. The first starts at the shipment's origin, each next one where the previous ended, the last ends at the destination; a gap is refused with the leg that breaks the chain.
 Footprint:: EN 16258 from `standards`, calculated when the shipment is planned and kept: a later change of emission factors does not rewrite what a customer was told.
+
+[[customer-order]]
+=== One shipment per customer order number
+
+A client that sends `POST /shipments` and gets no answer, a timeout, a dropped connection, cannot know whether the shipment was created. With a `customerOrderReference`, its own order number, it can simply send the same request again:
+
+[cols="3,2",options="header"]
+|===
+| The order number is | Answer
+
+| not given | `201`, a new shipment every time
+| new for this tenant | `201`, the new shipment
+| known, and the plan is the same | `200`, the shipment created the first time
+| known, but with another plan | `409 customer-order-conflict`: another order needs another number
+|===
+
+The hard case is two such retries arriving at the same moment: both look, both find nothing, both insert. The unique index `(tenant_id, customer_order_reference)` lets only one insert commit. The other fails, its transaction is rolled back, and a second, fresh transaction reads the winner and answers `200` with it. Eight identical requests in parallel against PostgreSQL get one `201` and seven `200`, all for the same shipment.
+
+Every losing insert had already taken a shipment number, so the numbers then have gaps (`SHP-10001`, then `SHP-10010`). A gap is allowed; a number given twice is not.
 
 [[shipment-lifecycle]]
 === Lifecycle
@@ -388,7 +408,7 @@ All endpoints need `LOGISTICS_PLANNER` or `TENANT_ADMIN` (<<roles>>).
 
 | `POST /api/v1/tms/shipments/{id}/pickup`, `/departure` | Moves the shipment one step on (<<shipment-lifecycle>>) | `409 shipment-status-conflict`
 | `POST /api/v1/tms/shipments/{id}/delivery` | Delivers it, with `{"receivedBy": "…"}` (<<delivered-once>>) | `409 shipment-status-conflict`, `409 concurrent-update`
-| `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED` | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode)
+| `POST /api/v1/tms/shipments` | Plans a shipment; numbers it, calculates the footprint; status `PLANNED`. `201`, or `200` with the existing shipment for a known `customerOrderReference` and the same plan (<<customer-order>>) | `400 domain-validation` (ISO 6346 or SSCC check digit, a broken route), `400 invalid-payload` (unknown incoterm or mode), `409 customer-order-conflict`
 | `GET /api/v1/tms/shipments`, `/{id}` | The tenant's shipments, newest first | `404` for another tenant's id
 |===
 

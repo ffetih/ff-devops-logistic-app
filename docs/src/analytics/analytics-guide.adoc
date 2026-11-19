@@ -95,6 +95,58 @@ Its tables have no module prefix: the whole database is analytics.
 | `shipment_deliveries` | One per delivered shipment: tenant, number, order reference, distance, CO~2~e saved, `delivered_at`, and `loaded_at`, when the loader stored it
 |===
 
+Every table has the same row-level security (<<rls>>).
+
+[[rls]]
+== One tenant per reader: row-level security
+
+The logistics app keeps tenants apart in its code: Hibernate adds `tenant_id = ?` to every query. The analytics database will be read by tools that know nothing of that code, dashboards first (S9). So the rule moves into the database: PostgreSQL itself filters every row, whatever the SQL.
+
+[plantuml,analytics-rls,svg]
+----
+@startuml
+skinparam componentStyle rectangle
+[analytics loader\n(superuser: no policy applies)] as loader
+[dashboard, report\n(analytics_reader)] as reader
+database "shipment_deliveries" {
+  [policy tenant_isolation:\ntenant_id = current_setting('app.tenant_id')\nOR current_setting('app.all_tenants') = 'on'] as policy
+}
+loader --> policy : writes every tenant's rows
+reader --> policy : SET app.tenant_id = 'ff-eu-freight'\nthen any SELECT
+@enduml
+----
+
+[cols="2,3",options="header"]
+|===
+| Session | Sees
+
+| `analytics_reader`, nothing set | No row. A forgotten setting shows nothing rather than everything.
+| `SET app.tenant_id = 'ff-eu-freight'` | That tenant's rows only, in every query, join and aggregate
+| `SET app.all_tenants = 'on'` | Every tenant's rows: the platform's own reports, never a tenant's dashboard
+| The loader (a superuser) | Everything; it writes every tenant's rows. A superuser or a `BYPASSRLS` role is above every policy.
+|===
+
+Four details make it hold:
+
+* *`FORCE` as well as `ENABLE`.* `ENABLE ROW LEVEL SECURITY` exempts the table's owner. `FORCE` holds the owner to the policy too, so only a superuser or `BYPASSRLS` role is above it, never a role that merely created the table.
+* *`current_setting(name, true)`* answers null for a setting the session never made, instead of an error, and `tenant_id = null` is never true: no row.
+* *The scope changes only between statements.* `set_config()` would let one statement widen its own scope half way through: `SELECT set_config('app.all_tenants', 'on', false), count(*) FROM …` reads its later rows with the new value. A dashboard lets a viewer write such an expression into a chart. So no role but a superuser may call `set_config()` in this database (`REVOKE … FROM PUBLIC`); `SET` still works, and `SET` is a statement of its own.
+* *The reader reads, and only what it is given.* `SELECT` on the analytics tables, nothing on `flyway_schema_history`, no `INSERT`; `WITH CHECK` would refuse a row of another tenant even if it could write.
+
+The role is created by the loader's migration (`V2`), with the password of the `analytics-reader-credentials` Secret (`deploy/platform/postgres`) as a Flyway placeholder. Roles belong to the server, not to one database: it is created once and kept. `RowLevelSecurityTest` connects as the reader and tries each of the rows above.
+
+To see it on the cluster:
+
+[source,bash]
+----
+kubectl -n ff-logistics exec -it deploy/postgres -- psql -h localhost -U analytics_reader -d ff_logistics_analytics
+# password: analyticsReader2026
+select count(*) from shipment_deliveries;                    -- 0: no tenant named
+set app.tenant_id = 'ff-eu-freight';
+select count(*) from shipment_deliveries;                    -- that tenant's deliveries
+select set_config('app.all_tenants', 'on', false);           -- ERROR: permission denied for function set_config
+----
+
 [[try-it]]
 == Try it on the cluster
 

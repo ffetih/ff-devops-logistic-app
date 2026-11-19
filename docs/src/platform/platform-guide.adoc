@@ -274,6 +274,7 @@ CAUTION: The chart never sets the `local` profile. Never enable it outside a dev
 * A tenant id has one format, `TenantIds` in `siose-ff-base-tenant`: 2 to 64 lower-case letters, digits and hyphens, starting with a letter or digit. A token with any other `tenant_id` is refused with 401, so nothing downstream cleans or rewrites a tenant id.
 * There is no default tenant. Code that runs without one cannot save data, and reads return nothing.
 * From the first entity on, `TenantAwareEntity` is the base class of every entity; its `tenant_id` column is `@TenantId`, and Hibernate filters every query by the tenant in `TenantContext`.
+* The analytics database is read by tools that know nothing of the app's code, so the filter lives in PostgreSQL itself: row-level security, a reader role, and a tenant the session names (link:{url-analytics-guide}#rls[Analytics Guide]).
 
 [[docs]]
 == Working on this documentation

@@ -362,8 +362,10 @@ Goal: business events leave the logistics app through Kafka, from the same outbo
   Port: `platform/ff-analytics/analytics-loader` (`V2`, renamed: `shipment_deliveries`, with the order reference). `V1` (KPI snapshots) comes with the reports that write it (S10); `V3` with the rollup (S08-05).
   Absorbs: `1857652`.
   Done when: after the first image is published and made public, `argocd app sync analytics-loader` creates and migrates the database, the loader is Healthy, the deliveries made so far are in `shipment_deliveries`, and a broken message sent on purpose lands on the dead-letter topic.
-- [ ] **S08-04 Lock the analytics tables to the tenant with RLS**
+- [x] **S08-04 Lock the analytics tables to the tenant with RLS**
+  `V2`: row-level security on `shipment_deliveries`, `ENABLE` and `FORCE`, one policy: a row is visible when its tenant is `app.tenant_id`, or when `app.all_tenants` is `on`; nothing set, nothing visible. A role `analytics_reader` (no superuser, no `BYPASSRLS`) gets `SELECT` and nothing else; its password comes from the `analytics-reader-credentials` Secret through a Flyway placeholder. The loader writes as the server's owner, above every policy. `set_config()` is revoked from `PUBLIC`, so a statement cannot widen its own scope half way. `RowLevelSecurityTest` connects as the reader: nothing without a tenant, one tenant, all tenants, no `set_config()`, no writes, no Flyway table.
   Absorbs: `0c69d59`, `V4`.
+  Done when: after syncing `postgres` and the loader, `analytics_reader` sees 0 rows, then only the tenant it sets, and `set_config()` is refused.
 - [ ] **S08-05 Roll deliveries up per tenant and month**
   Absorbs: `85ec349`, `d2361f8`, `V5`.
 
